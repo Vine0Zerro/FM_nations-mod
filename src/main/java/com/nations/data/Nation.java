@@ -12,8 +12,9 @@ public class Nation {
     private Set<String> towns = new HashSet<>();
     private Set<UUID> pendingInvites = new HashSet<>();
     private Set<String> warTargets = new HashSet<>();
+    private Map<String, String> diplomacy = new HashMap<>(); // nationName -> "neutral"/"hostile"/"friendly"
     private String allianceName = null;
-    private double nationTaxRate = 0.03; // 3% налог нации с городов
+    private double nationTaxRate = 0.03;
     private int warsWon = 0;
     private int warsLost = 0;
     private int townsCaptured = 0;
@@ -24,6 +25,7 @@ public class Nation {
         this.color = color;
     }
 
+    // === Getters/Setters ===
     public String getName() { return name; }
     public UUID getLeader() { return leader; }
     public NationColor getColor() { return color; }
@@ -42,21 +44,34 @@ public class Nation {
     public int getTownsCaptured() { return townsCaptured; }
     public void addTownCaptured() { this.townsCaptured++; }
 
+    // === Towns ===
     public void addTown(String townName) { towns.add(townName); }
     public void removeTown(String townName) { towns.remove(townName); }
     public boolean hasTown(String townName) { return towns.contains(townName); }
 
+    // === War ===
     public void declareWar(String nationName) { warTargets.add(nationName); }
     public void endWar(String nationName) { warTargets.remove(nationName); }
     public boolean isAtWarWith(String nationName) { return warTargets.contains(nationName); }
 
-    // Рейтинг нации
+    // === Diplomacy ===
+    public void setDiplomacy(String nationName, String status) {
+        diplomacy.put(nationName.toLowerCase(), status);
+    }
+
+    public String getDiplomacy(String nationName) {
+        return diplomacy.getOrDefault(nationName.toLowerCase(), "neutral");
+    }
+
+    public Map<String, String> getAllDiplomacy() { return diplomacy; }
+
+    // === Stats ===
     public int getRating() {
         int score = 0;
-        score += towns.size() * 50;        // за каждый город
-        score += warsWon * 100;            // за победы
-        score -= warsLost * 50;            // за поражения
-        score += townsCaptured * 75;       // за захваченные города
+        score += towns.size() * 50;
+        score += warsWon * 100;
+        score -= warsLost * 50;
+        score += townsCaptured * 75;
         return Math.max(0, score);
     }
 
@@ -78,6 +93,7 @@ public class Nation {
         return total;
     }
 
+    // === Serialization ===
     public JsonObject toJson() {
         JsonObject json = new JsonObject();
         json.addProperty("name", name);
@@ -101,6 +117,10 @@ public class Nation {
         for (String w : warTargets) warArr.add(w);
         json.add("wars", warArr);
 
+        JsonObject dipObj = new JsonObject();
+        for (var e : diplomacy.entrySet()) dipObj.addProperty(e.getKey(), e.getValue());
+        json.add("diplomacy", dipObj);
+
         return json;
     }
 
@@ -120,6 +140,11 @@ public class Nation {
         for (var el : json.getAsJsonArray("invites")) nation.pendingInvites.add(UUID.fromString(el.getAsString()));
         if (json.has("wars")) {
             for (var el : json.getAsJsonArray("wars")) nation.warTargets.add(el.getAsString());
+        }
+        if (json.has("diplomacy")) {
+            for (var e : json.getAsJsonObject("diplomacy").entrySet()) {
+                nation.diplomacy.put(e.getKey(), e.getValue().getAsString());
+            }
         }
         return nation;
     }
