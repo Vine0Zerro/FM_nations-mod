@@ -17,9 +17,13 @@ public class NationsData {
     private static final Map<UUID, Long> claimCooldowns = new ConcurrentHashMap<>();
     private static final Map<UUID, Integer> claimCountInMinute = new ConcurrentHashMap<>();
     private static Path saveDir;
+    private static MinecraftServer serverInstance;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
+    public static MinecraftServer getServer() { return serverInstance; }
+
     public static void load(MinecraftServer server) {
+        serverInstance = server;
         saveDir = server.getServerDirectory().toPath().resolve("nations_data");
         try {
             Files.createDirectories(saveDir);
@@ -96,7 +100,7 @@ public class NationsData {
         }
     }
 
-    // === Town methods ===
+    // === Town ===
     public static Town getTown(String name) { return towns.get(name.toLowerCase()); }
 
     public static Town getTownByPlayer(UUID player) {
@@ -114,11 +118,30 @@ public class NationsData {
     }
 
     public static boolean townExists(String name) { return towns.containsKey(name.toLowerCase()); }
-    public static void addTown(Town town) { towns.put(town.getName().toLowerCase(), town); save(); }
-    public static void removeTown(String name) { towns.remove(name.toLowerCase()); save(); }
+
+    public static void addTown(Town town) {
+        towns.put(town.getName().toLowerCase(), town);
+        save();
+    }
+
+    public static void removeTown(String name) {
+        Town town = towns.get(name.toLowerCase());
+        if (town != null) {
+            // Убрать из нации
+            if (town.getNationName() != null) {
+                Nation nation = getNation(town.getNationName());
+                if (nation != null) {
+                    nation.removeTown(town.getName());
+                }
+            }
+            towns.remove(name.toLowerCase());
+            save();
+        }
+    }
+
     public static Collection<Town> getAllTowns() { return towns.values(); }
 
-    // === Nation methods ===
+    // === Nation ===
     public static Nation getNation(String name) { return nations.get(name.toLowerCase()); }
 
     public static Nation getNationByPlayer(UUID player) {
@@ -130,8 +153,42 @@ public class NationsData {
     }
 
     public static boolean nationExists(String name) { return nations.containsKey(name.toLowerCase()); }
-    public static void addNation(Nation nation) { nations.put(nation.getName().toLowerCase(), nation); save(); }
-    public static void removeNation(String name) { nations.remove(name.toLowerCase()); save(); }
+
+    public static void addNation(Nation nation) {
+        nations.put(nation.getName().toLowerCase(), nation);
+        save();
+    }
+
+    public static void removeNation(String name) {
+        Nation nation = nations.get(name.toLowerCase());
+        if (nation != null) {
+            // Убрать нацию у всех городов
+            for (String townName : new HashSet<>(nation.getTowns())) {
+                Town t = getTown(townName);
+                if (t != null) {
+                    t.setNationName(null);
+                    t.setAtWar(false);
+                    t.setPvpEnabled(false);
+                    t.setDestructionEnabled(false);
+                    t.setCaptured(false);
+                    t.setCapturedBy(null);
+                }
+            }
+            // Убрать из альянса
+            if (nation.getAllianceName() != null) {
+                Alliance a = getAlliance(nation.getAllianceName());
+                if (a != null) a.removeMember(nation.getName());
+            }
+            // Убрать войны
+            for (String warTarget : new HashSet<>(nation.getWarTargets())) {
+                Nation target = getNation(warTarget);
+                if (target != null) target.endWar(nation.getName());
+            }
+            nations.remove(name.toLowerCase());
+            save();
+        }
+    }
+
     public static Collection<Nation> getAllNations() { return nations.values(); }
 
     public static boolean isColorTaken(NationColor color) {
@@ -141,7 +198,7 @@ public class NationsData {
         return false;
     }
 
-    // === Alliance methods ===
+    // === Alliance ===
     public static Alliance getAlliance(String name) { return alliances.get(name.toLowerCase()); }
 
     public static Alliance getAllianceByNation(String nationName) {
@@ -163,6 +220,18 @@ public class NationsData {
         return false;
     }
 
+    // === War zone check ===
+    public static boolean isWarZone(ChunkPos pos) {
+        Town town = getTownByChunk(pos);
+        return town != null && town.isAtWar();
+    }
+
+    public static boolean areNationsAtWar(String nation1, String nation2) {
+        if (nation1 == null || nation2 == null) return false;
+        Nation n1 = getNation(nation1);
+        return n1 != null && n1.isAtWarWith(nation2);
+    }
+
     // === Ranking ===
     public static List<Nation> getNationRanking() {
         return nations.values().stream()
@@ -170,7 +239,7 @@ public class NationsData {
             .collect(Collectors.toList());
     }
 
-    // === Claim rate limiting ===
+    // === Claim rate ===
     public static boolean canClaim(UUID player) {
         long now = System.currentTimeMillis();
         Long lastReset = claimCooldowns.get(player);
@@ -178,12 +247,10 @@ public class NationsData {
             claimCooldowns.put(player, now);
             claimCountInMinute.put(player, 0);
         }
-        int count = claimCountInMinute.getOrDefault(player, 0);
-        return count < 5;
+        return claimCountInMinute.getOrDefault(player, 0) < 5;
     }
 
     public static void incrementClaim(UUID player) {
-        int count = claimCountInMinute.getOrDefault(player, 0);
-        claimCountInMinute.put(player, count + 1);
+        claimCountInMinute.put(player, claimCountInMinute.getOrDefault(player, 0) + 1);
     }
 }
