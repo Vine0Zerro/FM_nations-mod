@@ -20,11 +20,12 @@ public class ProtectionHandler {
         Town town = NationsData.getTownByChunk(cp);
         if (town == null) return;
         if (town.isMember(player.getUUID())) return;
+        if (town.isPlotOwner(cp, player.getUUID())) return;
         if (canInteractDuringWar(player, town)) return;
 
         event.setCanceled(true);
         player.sendSystemMessage(Component.literal(
-            "§c🛡 Территория города §e" + town.getName() + "§c!"));
+            "§8§l┃ §c🛡 §fЗащищённая территория города §e" + town.getName()));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -34,11 +35,12 @@ public class ProtectionHandler {
         Town town = NationsData.getTownByChunk(cp);
         if (town == null) return;
         if (town.isMember(player.getUUID())) return;
+        if (town.isPlotOwner(cp, player.getUUID())) return;
         if (canInteractDuringWar(player, town)) return;
 
         event.setCanceled(true);
         player.sendSystemMessage(Component.literal(
-            "§c🛡 Территория города §e" + town.getName() + "§c!"));
+            "§8§l┃ §c🛡 §fЗащищённая территория города §e" + town.getName()));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -48,14 +50,13 @@ public class ProtectionHandler {
         Town town = NationsData.getTownByChunk(cp);
         if (town == null) return;
         if (town.isMember(player.getUUID())) return;
-
-        // Союзники могут взаимодействовать
+        if (town.isPlotOwner(cp, player.getUUID())) return;
         if (isAlly(player, town)) return;
         if (canInteractDuringWar(player, town)) return;
 
         event.setCanceled(true);
         player.sendSystemMessage(Component.literal(
-            "§c🛡 Территория города §e" + town.getName() + "§c!"));
+            "§8§l┃ §c🛡 §fЗащищённая территория города §e" + town.getName()));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -65,12 +66,36 @@ public class ProtectionHandler {
 
         ChunkPos cp = new ChunkPos(victim.blockPosition());
         Town town = NationsData.getTownByChunk(cp);
+
+        // На незаприваченной территории — PvP по серверным правилам
         if (town == null) return;
 
         if (!town.isPvpEnabled()) {
             event.setCanceled(true);
             attacker.sendSystemMessage(Component.literal(
-                "§c⚔ PvP выключен на территории §e" + town.getName() + "§c!"));
+                "§8§l┃ §c⚔ §fPvP выключен на территории §e" + town.getName()));
+            return;
+        }
+
+        // Если PvP включен (война) — проверяем что оба участника враждующих наций
+        if (town.isAtWar()) {
+            Nation attackerNation = NationsData.getNationByPlayer(attacker.getUUID());
+            Nation victimNation = NationsData.getNationByPlayer(victim.getUUID());
+
+            if (attackerNation == null || victimNation == null) {
+                event.setCanceled(true);
+                attacker.sendSystemMessage(Component.literal(
+                    "§8§l┃ §c⚔ §fТолько участники враждующих наций могут сражаться!"));
+                return;
+            }
+
+            if (!NationsData.areNationsAtWar(attackerNation.getName(), victimNation.getName())) {
+                event.setCanceled(true);
+                attacker.sendSystemMessage(Component.literal(
+                    "§8§l┃ §c⚔ §fВаши нации не воюют друг с другом!"));
+                return;
+            }
+            // Враждующие нации — урон разрешён
         }
     }
 
@@ -88,21 +113,16 @@ public class ProtectionHandler {
         if (!targetTown.isAtWar() || !targetTown.isDestructionEnabled()) return false;
         if (targetTown.getNationName() == null) return false;
 
-        Nation targetNation = NationsData.getNation(targetTown.getNationName());
-        if (targetNation == null) return false;
-
         Nation playerNation = NationsData.getNationByPlayer(player.getUUID());
         if (playerNation == null) return false;
 
-        return targetNation.isAtWarWith(playerNation.getName());
+        return NationsData.areNationsAtWar(playerNation.getName(), targetTown.getNationName());
     }
 
     private boolean isAlly(ServerPlayer player, Town targetTown) {
         if (targetTown.getNationName() == null) return false;
-
         Nation playerNation = NationsData.getNationByPlayer(player.getUUID());
         if (playerNation == null) return false;
-
         return NationsData.areAllied(playerNation.getName(), targetTown.getNationName());
     }
 }
