@@ -4,6 +4,7 @@ import com.nations.commands.*;
 import com.nations.data.*;
 import com.nations.events.ProtectionHandler;
 import com.nations.events.TerritoryHandler;
+import com.nations.integration.DynmapIntegration;
 import com.nations.network.NetworkHandler;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -24,7 +25,9 @@ public class NationsMod {
     public static final String MODID = "nations";
     public static final Logger LOGGER = LogManager.getLogger();
     private int tickCounter = 0;
+    private int dynmapTickCounter = 0;
     private static final int TAX_INTERVAL_TICKS = 20 * 60 * 60; // 1 час
+    private static final int DYNMAP_UPDATE_TICKS = 20 * 60 * 5; // 5 минут
 
     public NationsMod() {
         FMLJavaModLoadingContext.get().getModEventBus()
@@ -41,6 +44,13 @@ public class NationsMod {
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
         NationsData.load(event.getServer());
+
+        // Инициализация DynMap
+        try {
+            DynmapIntegration.init();
+        } catch (Exception e) {
+            LOGGER.info("DynMap не найден — интеграция отключена");
+        }
     }
 
     @SubscribeEvent
@@ -58,18 +68,34 @@ public class NationsMod {
         RankingCommands.register(event.getDispatcher());
     }
 
-    // === Автоматический сбор налогов каждый час ===
+    // === Автоматический сбор налогов и обновление DynMap ===
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
-        tickCounter++;
-        if (tickCounter < TAX_INTERVAL_TICKS) return;
-        tickCounter = 0;
 
+        tickCounter++;
+        dynmapTickCounter++;
+
+        // === Автосбор налогов каждый час ===
+        if (tickCounter >= TAX_INTERVAL_TICKS) {
+            tickCounter = 0;
+            collectAllTaxes();
+        }
+
+        // === Обновление DynMap каждые 5 минут ===
+        if (dynmapTickCounter >= DYNMAP_UPDATE_TICKS) {
+            dynmapTickCounter = 0;
+            try {
+                DynmapIntegration.updateAllMarkers();
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void collectAllTaxes() {
         long now = System.currentTimeMillis();
 
         for (Town town : NationsData.getAllTowns()) {
-            if (now - town.getLastTaxCollection() < 3600000) continue; // 1 час
+            if (now - town.getLastTaxCollection() < 3600000) continue;
             if (town.getTaxRate() <= 0) continue;
 
             double collected = Economy.collectTax(town, town.getTaxRate());
