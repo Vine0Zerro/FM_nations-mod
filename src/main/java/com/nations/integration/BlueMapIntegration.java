@@ -8,7 +8,6 @@ import net.minecraftforge.fml.ModList;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.*;
-import java.util.function.Consumer;
 
 public class BlueMapIntegration {
 
@@ -21,7 +20,7 @@ public class BlueMapIntegration {
     private static Method mGetInstance, mGetMaps, mGetId, mGetMarkerSets;
     private static Method mMarkerSetBuilder, mMarkerSetLabel, mMarkerSetBuild, mMarkerSetGetMarkers;
     private static Method mShapeMarkerBuilder, mShapeMarkerLabel, mShapeMarkerShape, mShapeMarkerDepthTest, mShapeMarkerFillColor, mShapeMarkerLineColor, mShapeMarkerLineWidth, mShapeMarkerDetail, mShapeMarkerBuild;
-    private static Method mPOIMarkerToBuilder, mPOIMarkerLabel, mPOIMarkerPosition, mPOIMarkerDetail, mPOIMarkerBuild;
+    private static Method mPOIMarkerToBuilder, mPOIMarkerLabel, mPOIMarkerPosition, mPOIMarkerDetail, mPOIMarkerIcon, mPOIMarkerBuild;
     private static Constructor<?> cVector2d, cShape, cColor;
 
     public static void init() {
@@ -73,6 +72,8 @@ public class BlueMapIntegration {
         mPOIMarkerLabel = clsPOIMarkerBuilder.getMethod("label", String.class);
         mPOIMarkerPosition = clsPOIMarkerBuilder.getMethod("position", double.class, double.class, double.class);
         mPOIMarkerDetail = clsPOIMarkerBuilder.getMethod("detail", String.class);
+        // Метод для иконки: (path, anchorX, anchorY)
+        mPOIMarkerIcon = clsPOIMarkerBuilder.getMethod("icon", String.class, int.class, int.class);
         mPOIMarkerBuild = clsPOIMarkerBuilder.getMethod("build");
 
         cVector2d = clsVector2d.getConstructor(double.class, double.class);
@@ -137,12 +138,19 @@ public class BlueMapIntegration {
 
         int r = 136, g = 136, b = 136;
         String nationName = "Без нации";
+        boolean isCapital = false;
+
         if (town.getNationName() != null) {
             Nation nation = NationsData.getNation(town.getNationName());
             if (nation != null) {
                 int hex = nation.getColor().getHex();
                 r = (hex >> 16) & 0xFF; g = (hex >> 8) & 0xFF; b = (hex) & 0xFF;
                 nationName = nation.getName();
+                
+                // Проверка на столицу (Мэр города == Лидер нации)
+                if (nation.getLeader().equals(town.getMayor())) {
+                    isCapital = true;
+                }
             }
         }
 
@@ -182,12 +190,23 @@ public class BlueMapIntegration {
             markers.put("p_" + town.getName() + "_" + (polyIndex++), marker);
         }
 
+        // --- МАРКЕР СПАВНА И ИКОНКИ ---
         if (town.getSpawnPos() != null) {
             String spawnId = "spawn_" + town.getName();
             Object builder = mPOIMarkerToBuilder.invoke(null);
             mPOIMarkerLabel.invoke(builder, town.getName());
             mPOIMarkerPosition.invoke(builder, (double)town.getSpawnPos().getX(), (double)town.getSpawnPos().getY() + 2, (double)town.getSpawnPos().getZ());
             mPOIMarkerDetail.invoke(builder, popup);
+            
+            // Выбор иконки
+            if (isCapital) {
+                // Золотая корона (якорь 16,16 - центр картинки 32x32)
+                mPOIMarkerIcon.invoke(builder, "assets/crown.png", 16, 16);
+            } else {
+                // Квадратная точка (якорь 8,8 - центр картинки 16x16)
+                mPOIMarkerIcon.invoke(builder, "assets/town.png", 8, 8);
+            }
+
             Object spawnMarker = mPOIMarkerBuild.invoke(builder);
             markers.put(spawnId, spawnMarker);
         }
@@ -239,57 +258,65 @@ public class BlueMapIntegration {
     private static String buildPopup(Town town, String nationName, int r, int g, int b) {
         StringBuilder sb = new StringBuilder();
         
-        // CSS
-        // margin: -10px убирает стандартные отступы BlueMap
+        // CSS Reset & Style
+        // min-width + margin:-10px компенсируют отступы BlueMap
         String containerStyle = "font-family: 'Segoe UI', Roboto, sans-serif; background: rgba(10, 10, 15, 0.95); " +
-                                "padding: 12px; border-radius: 8px; color: #fff; min-width: 240px; " +
-                                "margin: -10px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 10px rgba(0,0,0,0.5);";
+                                "padding: 12px; border-radius: 8px; color: #fff; min-width: 250px; " +
+                                "margin: -10px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.6); position: relative;";
         
-        // Flex для строк: метка слева, значение справа (рядом)
-        String rowStyle = "display: flex; align-items: baseline; margin-bottom: 5px; font-size: 14px;";
+        // Кнопка закрытия (визуальная) - справа сверху
+        String closeBtnStyle = "position: absolute; top: 5px; right: 8px; color: #888; font-size: 16px; cursor: pointer; font-weight: bold;";
+
+        // Grid для идеального выравнивания (Метка | Значение)
+        // 1-я колонка: 60px (фиксированная), 2-я: auto (остальное)
+        String gridStyle = "display: grid; grid-template-columns: 65px 1fr; align-items: baseline; row-gap: 4px; font-size: 14px;";
         
-        // Нейтральная метка (обычный шрифт, серый)
-        String labelStyle = "color: #AAAAAA; font-weight: 500; margin-right: 8px; white-space: nowrap;";
-        
-        // Значение (ЖИРНЫЙ шрифт)
-        String valueStyle = "font-weight: bold; flex-grow: 1; text-align: left;";
+        String labelStyle = "color: #AAAAAA; font-weight: 500; text-align: left;"; // Менее жирный, серый
+        String valStyle = "color: #DDDDDD; font-weight: bold; text-align: left;"; // Такой же цвет как у жителей
 
         String titleColor = String.format("rgb(%d, %d, %d)", r, g, b);
         if (town.isAtWar()) titleColor = "#FF4444";
 
         sb.append("<div style=\"").append(containerStyle).append("\">");
+        
+        // Кнопка закрытия (визуальная подсказка)
+        sb.append("<div style=\"").append(closeBtnStyle).append("\" onclick=\"this.parentElement.style.display='none';\">×</div>");
+
+        // --- GRID CONTENT ---
+        sb.append("<div style=\"").append(gridStyle).append("\">");
 
         // 1. Нация
-        String natColor = town.getNationName() != null ? titleColor : "#FFFFFF";
-        sb.append("<div style=\"").append(rowStyle).append("\">")
-          .append("<span style=\"").append(labelStyle).append("\">Нация:</span>")
-          .append("<span style=\"").append(valueStyle).append("color:").append(natColor).append(";\">")
-          .append(nationName).append("</span></div>");
+        String natColor = town.getNationName() != null ? titleColor : "#AAAAAA"; // Нейтральный, если нет
+        sb.append("<div style=\"").append(labelStyle).append("\">Нация:</div>");
+        sb.append("<div style=\"").append(valStyle).append("color:").append(natColor).append(";\">")
+          .append(nationName).append("</div>");
 
         // 2. Город
-        sb.append("<div style=\"").append(rowStyle).append("\">")
-          .append("<span style=\"").append(labelStyle).append("\">Город:</span>")
-          .append("<span style=\"").append(valueStyle).append("color: #FFD700;\">") // Золотой
-          .append(town.getName()).append("</span></div>");
+        sb.append("<div style=\"").append(labelStyle).append("\">Город:</div>");
+        sb.append("<div style=\"").append(valStyle).append("\">")
+          .append(town.getName()).append("</div>");
 
-        // Разделитель (чуть светлее)
-        sb.append("<hr style=\"border: 0; border-top: 1px solid rgba(255,255,255,0.3); margin: 8px 0;\">");
+        sb.append("</div>"); // End top grid
 
-        // 3. Мэр (рядом с меткой)
+        // --- РАЗДЕЛИТЕЛЬ (Светлее) ---
+        sb.append("<hr style=\"border: 0; border-top: 1px solid rgba(255,255,255,0.4); margin: 8px 0;\">");
+
+        // --- GRID BOTTOM ---
+        sb.append("<div style=\"").append(gridStyle).append("\">");
+
+        // 3. Мэр
         String mayorName = "Неизвестно";
         if (NationsData.getServer() != null) {
             var p = NationsData.getServer().getPlayerList().getPlayer(town.getMayor());
             if (p != null) mayorName = p.getName().getString();
         }
-        sb.append("<div style=\"").append(rowStyle).append("\">")
-          .append("<span style=\"").append(labelStyle).append("\">Мэр:</span>")
-          .append("<span style=\"").append(valueStyle).append("color: #FFAA00;\">") // Оранжевый для мэра
-          .append(mayorName).append("</span></div>");
+        sb.append("<div style=\"").append(labelStyle).append("\">Мэр:</div>");
+        sb.append("<div style=\"").append(valStyle).append("color: #FFAA00;\">") // Оранжевый ник
+          .append(mayorName).append("</div>");
 
-        // 4. Жители (сразу после двоеточия)
-        sb.append("<div style=\"display: flex; align-items: baseline; font-size: 14px;\">")
-          .append("<span style=\"").append(labelStyle).append("\">Жители:</span>")
-          .append("<span style=\"color: #DDDDDD; font-weight: bold; line-height: 1.3; flex-grow: 1;\">");
+        // 4. Жители
+        sb.append("<div style=\"").append(labelStyle).append("align-self: start;\">Жители:</div>"); // align-self для многострочного
+        sb.append("<div style=\"").append(valStyle).append("font-weight: 500; font-size: 13px; line-height: 1.3;\">");
         
         List<String> names = new ArrayList<>();
         int limit = 0;
@@ -304,7 +331,9 @@ public class BlueMapIntegration {
             limit++;
         }
         sb.append(String.join(", ", names));
-        sb.append("</span></div>");
+        sb.append("</div>");
+
+        sb.append("</div>"); // End bottom grid
 
         // Статусы
         if (town.isAtWar()) {
