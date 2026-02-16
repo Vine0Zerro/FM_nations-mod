@@ -17,7 +17,7 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
 repositories {
     maven { url = 'https://maven.minecraftforge.net/' }
-    maven { url = 'https://repo.bluecolored.de/releases' } // <--- Репозиторий BlueMap
+    maven { url = 'https://jitpack.io' } // <--- JitPack всегда работает
     mavenCentral()
 }
 
@@ -46,8 +46,8 @@ minecraft {
 
 dependencies {
     minecraft "net.minecraftforge:forge:1.20.1-47.2.0"
-    // API BlueMap
-    compileOnly "de.bluecolored.bluemap:BlueMapAPI:2.7.3" 
+    // Используем JitPack версию BlueMapAPI
+    compileOnly "com.github.BlueMap-Minecraft:BlueMapAPI:v2.7.2" 
 }
 
 processResources {
