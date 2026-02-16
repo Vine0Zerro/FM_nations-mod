@@ -1,7 +1,7 @@
 package com.nations.data;
 
 import com.google.gson.*;
-import com.nations.integration.DynmapIntegration;
+import com.nations.integration.BlueMapIntegration;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.ChunkPos;
 
@@ -100,9 +100,9 @@ public class NationsData {
             e.printStackTrace();
         }
 
-        // === Обновить DynMap при каждом сохранении ===
+        // Обновляем BlueMap при каждом сохранении
         try {
-            DynmapIntegration.updateAllMarkers();
+            BlueMapIntegration.updateAllMarkers();
         } catch (Exception ignored) {}
     }
 
@@ -137,7 +137,6 @@ public class NationsData {
     public static void removeTown(String name) {
         Town town = towns.get(name.toLowerCase());
         if (town != null) {
-            // Убрать из нации
             if (town.getNationName() != null) {
                 Nation nation = getNation(town.getNationName());
                 if (nation != null) {
@@ -178,7 +177,6 @@ public class NationsData {
     public static void removeNation(String name) {
         Nation nation = nations.get(name.toLowerCase());
         if (nation != null) {
-            // Убрать нацию у всех городов
             for (String townName : new HashSet<>(nation.getTowns())) {
                 Town t = getTown(townName);
                 if (t != null) {
@@ -190,12 +188,10 @@ public class NationsData {
                     t.setCapturedBy(null);
                 }
             }
-            // Убрать из альянса
             if (nation.getAllianceName() != null) {
                 Alliance a = getAlliance(nation.getAllianceName());
                 if (a != null) a.removeMember(nation.getName());
             }
-            // Убрать войны
             for (String warTarget : new HashSet<>(nation.getWarTargets())) {
                 Nation target = getNation(warTarget);
                 if (target != null) target.endWar(nation.getName());
