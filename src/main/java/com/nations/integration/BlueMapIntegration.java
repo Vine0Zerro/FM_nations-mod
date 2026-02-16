@@ -16,7 +16,7 @@ public class BlueMapIntegration {
     private static Object blueMapAPI = null;
     private static final String MARKER_SET_ID = "nations_towns";
 
-    // --- Кэш рефлексии ---
+    // --- Кэш рефлексии (классы и методы) ---
     private static Class<?> clsBlueMapAPI, clsBlueMapMap, clsMarkerSet, clsShapeMarker, clsPOIMarker, clsShape, clsVector2d, clsColor;
     private static Method mGetInstance, mGetMaps, mGetId, mGetMarkerSets;
     private static Method mMarkerSetBuilder, mMarkerSetLabel, mMarkerSetBuild, mMarkerSetGetMarkers;
@@ -26,10 +26,25 @@ public class BlueMapIntegration {
 
     public static void init() {
         if (!ModList.get().isLoaded("bluemap")) return;
+
         try {
             loadClasses();
+            
+            // 1. Подписываемся на событие включения (если BlueMap загрузится позже)
+            Method mOnEnable = clsBlueMapAPI.getMethod("onEnable", Consumer.class);
+            // Сложно сделать Consumer через рефлексию, поэтому используем стратегию поллинга и прямой проверки
+            
+            // 2. Проверяем прямо сейчас (если BlueMap уже загружен)
             checkApi();
-            enabled = true;
+            
+            if (blueMapAPI != null) {
+                enabled = true;
+                updateAllMarkers(); // Рисуем сразу при старте!
+                NationsMod.LOGGER.info("BlueMap подключен и обновлен.");
+            } else {
+                NationsMod.LOGGER.info("BlueMap API не готов, ожидание...");
+                enabled = true; // Разрешаем попытки обновления в тиках
+            }
         } catch (Exception e) {
             NationsMod.LOGGER.error("BlueMap init error: " + e.getMessage());
         }
@@ -119,36 +134,28 @@ public class BlueMapIntegration {
         }
     }
 
-    // === Алгоритм объединения чанков (убираем сетку) ===
+    // === Рисование объединенного контура ===
     private static void drawTownMerged(Town town, Map<String, Object> markers) throws Exception {
         Set<ChunkPos> chunks = town.getClaimedChunks();
         if (chunks.isEmpty()) return;
 
-        // 1. Создаем список всех сегментов (граней)
-        // Ключ: "x1,z1 -> x2,z2"
+        // 1. Собираем грани (алгоритм объединения)
         Set<String> edges = new HashSet<>();
-
         for (ChunkPos cp : chunks) {
             double x1 = cp.x * 16;
             double z1 = cp.z * 16;
             double x2 = x1 + 16;
             double z2 = z1 + 16;
-
-            // Добавляем 4 грани. Если грань уже есть (от соседа), удаляем её.
-            // Это "XOR" логика: внутренние границы исчезнут, останется только контур.
-            toggleEdge(edges, x1, z1, x2, z1); // Top
-            toggleEdge(edges, x2, z1, x2, z2); // Right
-            toggleEdge(edges, x2, z2, x1, z2); // Bottom
-            toggleEdge(edges, x1, z2, x1, z1); // Left
+            toggleEdge(edges, x1, z1, x2, z1);
+            toggleEdge(edges, x2, z1, x2, z2);
+            toggleEdge(edges, x2, z2, x1, z2);
+            toggleEdge(edges, x1, z2, x1, z1);
         }
 
-        // 2. Превращаем набор граней в замкнутые полигоны
+        // 2. Строим полигоны
         List<List<Point>> polygons = tracePolygons(edges);
 
-        // 3. Рисуем каждый полигон
-        int polyIndex = 0;
-        
-        // Цвета
+        // 3. Цвета
         int r = 136, g = 136, b = 136;
         String nationName = "Без нации";
         if (town.getNationName() != null) {
@@ -161,7 +168,7 @@ public class BlueMapIntegration {
         }
 
         Object fillColor = cColor.newInstance(r, g, b, 0.4f);
-        Object lineColor = cColor.newInstance(r, g, b, 0.9f); // Непрозрачная граница
+        Object lineColor = cColor.newInstance(r, g, b, 0.9f);
 
         if (town.isAtWar()) {
             fillColor = cColor.newInstance(255, 0, 0, 0.4f);
@@ -173,8 +180,8 @@ public class BlueMapIntegration {
 
         String popup = buildPopup(town, nationName, r, g, b);
 
+        int polyIndex = 0;
         for (List<Point> polyPoints : polygons) {
-            // Создаем массив Vector2d
             Object vectorArray = java.lang.reflect.Array.newInstance(clsVector2d, polyPoints.size());
             for (int i = 0; i < polyPoints.size(); i++) {
                 Point p = polyPoints.get(i);
@@ -190,14 +197,13 @@ public class BlueMapIntegration {
             mShapeMarkerDepthTest.invoke(builder, false);
             mShapeMarkerFillColor.invoke(builder, fillColor);
             mShapeMarkerLineColor.invoke(builder, lineColor);
-            mShapeMarkerLineWidth.invoke(builder, 3); // Жирная граница только по краю!
+            mShapeMarkerLineWidth.invoke(builder, 3); // Жирная граница по краю
             mShapeMarkerDetail.invoke(builder, popup);
 
             Object marker = mShapeMarkerBuild.invoke(builder);
-            markers.put("poly_" + town.getName() + "_" + (polyIndex++), marker);
+            markers.put("p_" + town.getName() + "_" + (polyIndex++), marker);
         }
 
-        // Спавн
         if (town.getSpawnPos() != null) {
             String spawnId = "spawn_" + town.getName();
             Object builder = mPOIMarkerToBuilder.invoke(null);
@@ -209,36 +215,27 @@ public class BlueMapIntegration {
         }
     }
 
-    // Логика трассировки граней
     private static void toggleEdge(Set<String> edges, double x1, double z1, double x2, double z2) {
         String forward = x1 + "," + z1 + ">" + x2 + "," + z2;
         String backward = x2 + "," + z2 + ">" + x1 + "," + z1;
-        
-        if (edges.contains(backward)) {
-            edges.remove(backward); // Удаляем общую грань (она внутри города)
-        } else {
-            edges.add(forward);
-        }
+        if (edges.contains(backward)) edges.remove(backward);
+        else edges.add(forward);
     }
 
     private static List<List<Point>> tracePolygons(Set<String> edges) {
         List<List<Point>> polygons = new ArrayList<>();
         Map<Point, Point> pathMap = new HashMap<>();
-
         for (String edge : edges) {
             String[] parts = edge.split(">");
             String[] p1 = parts[0].split(",");
             String[] p2 = parts[1].split(",");
-            Point start = new Point(Double.parseDouble(p1[0]), Double.parseDouble(p1[1]));
-            Point end = new Point(Double.parseDouble(p2[0]), Double.parseDouble(p2[1]));
-            pathMap.put(start, end);
+            pathMap.put(new Point(Double.parseDouble(p1[0]), Double.parseDouble(p1[1])),
+                        new Point(Double.parseDouble(p2[0]), Double.parseDouble(p2[1])));
         }
-
         while (!pathMap.isEmpty()) {
             List<Point> poly = new ArrayList<>();
             Point start = pathMap.keySet().iterator().next();
             Point current = start;
-            
             while (current != null) {
                 poly.add(current);
                 Point next = pathMap.remove(current);
@@ -253,46 +250,57 @@ public class BlueMapIntegration {
     private static class Point {
         double x, z;
         Point(double x, double z) { this.x = x; this.z = z; }
-        @Override
-        public boolean equals(Object o) {
+        @Override public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
-            Point point = (Point) o;
-            return Double.compare(point.x, x) == 0 && Double.compare(point.z, z) == 0;
+            Point p = (Point) o; return Double.compare(p.x, x) == 0 && Double.compare(p.z, z) == 0;
         }
-        @Override
-        public int hashCode() { return Objects.hash(x, z); }
+        @Override public int hashCode() { return Objects.hash(x, z); }
     }
 
     private static String buildPopup(Town town, String nationName, int r, int g, int b) {
         StringBuilder sb = new StringBuilder();
         
         // CSS
-        String containerStyle = "font-family: 'Segoe UI', sans-serif; min-width: 250px; background: rgba(15, 15, 20, 0.9); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); color: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.5);";
-        String rowStyle = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 14px;";
-        String labelStyle = "color: #bbb; font-weight: 500;";
-        String valStyle = "font-weight: 600; text-align: right;";
+        // margin: -10px и width: 100% заставляют наш блок заполнить стандартный пузырь полностью
+        String containerStyle = "font-family: 'Segoe UI', sans-serif; background: rgba(15, 15, 20, 0.95); " +
+                                "padding: 15px; border-radius: 8px; color: #fff; min-width: 260px; " +
+                                "margin: -10px; border: 1px solid rgba(255,255,255,0.1);";
         
+        String centerStyle = "text-align: center; margin-bottom: 10px;";
+        String leftStyle = "text-align: left;";
+        String rowStyle = "margin-bottom: 4px; font-size: 14px; line-height: 1.4;";
+        String labelStyle = "color: #bbb; font-weight: 600; margin-right: 6px;";
+        String valStyle = "color: #fff; font-weight: 500;";
+        
+        String titleColor = String.format("rgb(%d, %d, %d)", r, g, b);
+        if (town.isAtWar()) titleColor = "#FF4444";
+
         sb.append("<div style=\"").append(containerStyle).append("\">");
 
-        // 1. Нация
-        sb.append("<div style=\"").append(rowStyle).append("\">")
-          .append("<span style=\"").append(labelStyle).append("\">Нация:</span>");
+        // --- ВЕРХ (Центр) ---
+        sb.append("<div style=\"").append(centerStyle).append("\">");
         
-        String natColor = town.getNationName() != null ? String.format("rgb(%d,%d,%d)", r,g,b) : "#fff";
-        sb.append("<span style=\"").append(valStyle).append("color:").append(natColor).append(";\">")
-          .append(nationName).append("</span></div>");
+        // Нация
+        String natColor = town.getNationName() != null ? titleColor : "#fff";
+        sb.append("<div style=\"font-size: 12px; color: #aaa; text-transform: uppercase;\">Нация</div>");
+        sb.append("<div style=\"font-size: 16px; font-weight: bold; color: ").append(natColor).append(";\">")
+          .append(nationName).append("</div>");
+        
+        // Город
+        sb.append("<div style=\"font-size: 12px; color: #aaa; text-transform: uppercase; margin-top: 5px;\">Город</div>");
+        sb.append("<div style=\"font-size: 20px; font-weight: 800; color: #FFD700;\">")
+          .append(town.getName()).append("</div>");
+        
+        sb.append("</div>"); // Конец центра
 
-        // 2. Город
-        sb.append("<div style=\"").append(rowStyle).append("\">")
-          .append("<span style=\"").append(labelStyle).append("\">Город:</span>")
-          .append("<span style=\"").append(valStyle).append("color: #FFD700;\">")
-          .append(town.getName()).append("</span></div>");
+        // --- РАЗДЕЛИТЕЛЬ ---
+        sb.append("<hr style=\"border: 0; border-top: 1px solid rgba(255,255,255,0.4); margin: 10px 0;\">");
 
-        // Разделитель
-        sb.append("<hr style=\"border:0; border-top:1px solid rgba(255,255,255,0.15); margin: 8px 0;\">");
+        // --- НИЗ (Слева) ---
+        sb.append("<div style=\"").append(leftStyle).append("\">");
 
-        // 3. Мэр
+        // Мэр
         String mayorName = "Неизвестно";
         if (NationsData.getServer() != null) {
             var p = NationsData.getServer().getPlayerList().getPlayer(town.getMayor());
@@ -300,13 +308,14 @@ public class BlueMapIntegration {
         }
         sb.append("<div style=\"").append(rowStyle).append("\">")
           .append("<span style=\"").append(labelStyle).append("\">Мэр:</span>")
-          .append("<span style=\"").append(valStyle).append("\">").append(mayorName).append("</span></div>");
+          .append("<span style=\"").append(valStyle).append("\">").append(mayorName).append("</span>")
+          .append("</div>");
 
-        // 4. Жители
-        sb.append("<div style=\"").append(rowStyle).append("flex-direction: column; align-items: flex-start;\">")
-          .append("<span style=\"").append(labelStyle).append("margin-bottom: 2px;\">Жители:</span>");
+        // Жители (в одну строку)
+        sb.append("<div style=\"").append(rowStyle).append("\">")
+          .append("<span style=\"").append(labelStyle).append("\">Жители:</span>")
+          .append("<span style=\"color: #ddd; font-size: 13px;\">");
         
-        sb.append("<div style=\"font-size: 13px; color: #ddd; line-height: 1.3; width: 100%; word-wrap: break-word;\">");
         List<String> names = new ArrayList<>();
         int limit = 0;
         for (UUID id : town.getMembers()) {
@@ -320,17 +329,18 @@ public class BlueMapIntegration {
             limit++;
         }
         sb.append(String.join(", ", names));
-        sb.append("</div></div>");
+        sb.append("</span></div>"); // Конец жителей
 
         // Статусы
         if (town.isAtWar()) {
             sb.append("<div style=\"margin-top:10px; color:#ff5555; font-weight:bold; text-align:center;\">⚠ ИДЕТ ВОЙНА</div>");
-        }
-        if (town.isCaptured()) {
+        } else if (town.isCaptured()) {
             sb.append("<div style=\"margin-top:10px; color:#ffaa00; font-weight:bold; text-align:center;\">🏴 ЗАХВАЧЕН</div>");
         }
 
-        sb.append("</div>");
+        sb.append("</div>"); // Конец низа
+        sb.append("</div>"); // Конец контейнера
+
         return sb.toString();
     }
 }
