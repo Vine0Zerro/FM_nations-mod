@@ -115,10 +115,9 @@ public class TownCommands {
                     "§8§l┃ §c✘ §fЭтот чанк уже занят другим городом!"));
                 return 0;
             }
-            town.claimChunk(cp);
-            town.setSpawnPos(player.blockPosition());
-            town.addLog("Город создан игроком " + player.getName().getString());
-            NationsData.addTown(town);
+           town.claimChunk(cp);
+town.setSpawnPos(player.blockPosition()); // <--- ДОБАВИТЬ ЭТУ СТРОКУ
+NationsData.addTown(town);
             Economy.deposit(uuid, 0);
 
             source.sendSuccess(() -> Component.literal(
