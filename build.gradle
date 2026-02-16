@@ -1,6 +1,18 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '6.0.+'
+    }
+}
+
 plugins {
     id 'net.minecraftforge.gradle' version '[6.0,6.2)'
 }
+
+apply plugin: 'net.minecraftforge.gradle'
 
 version = mod_version
 group = mod_group
@@ -39,23 +51,34 @@ minecraft {
     }
 }
 
-// ВАЖНО: Добавлен блок repositories для загрузки Dynmap API
 repositories {
     mavenCentral()
+    
+    // Репозиторий Minecraft Forge
     maven {
-        url = 'https://repo.mikeprimm.com/'
+        url = 'https://maven.minecraftforge.net/'
+    }
+    
+    // CurseMaven - мост для загрузки модов с CurseForge как зависимостей
+    maven {
+        url = "https://cursemaven.com"
+        content {
+            includeGroup "curse.maven"
+        }
     }
 }
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
-    // ВАЖНО: Зависимость API Dynmap (compileOnly значит, что она нужна для сборки, но не включается в jar)
-    compileOnly "us.dynmap:dynmap-api:3.7-beta-1"
+    // Dynmap через CurseMaven
+    // Формат: curse.maven:<project-slug>-<project-id>:<file-id>
+    // Dynmap Project ID: 27101
+    // File ID для Dynmap-3.7-beta-1-forge-1.20.1: 4632231
+    compileOnly "curse.maven:dynmap-27101:4632231"
 }
 
 processResources {
-    // Этот блок заменяет переменные в mods.toml значениями из gradle.properties
     filesMatching('META-INF/mods.toml') {
         expand(
                 'mod_version': version,
@@ -67,7 +90,6 @@ processResources {
     }
 }
 
-// Настройка кодировки для корректной сборки (особенно если есть русские символы)
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
