@@ -32,7 +32,6 @@ public class BlueMapIntegration {
     private static Method mGetMarkerSets;
     private static Method mMarkerSetBuilder;
     private static Method mMarkerSetLabel;
-    // defaultHidden убран, так как его нет в старой версии API
     private static Method mMarkerSetBuild;
     private static Method mMarkerSetGetMarkers;
     
@@ -72,7 +71,6 @@ public class BlueMapIntegration {
     }
 
     private static void loadClasses() throws ClassNotFoundException, NoSuchMethodException {
-        // Загружаем классы по имени
         clsBlueMapAPI = Class.forName("de.bluecolored.bluemap.api.BlueMapAPI");
         clsBlueMapMap = Class.forName("de.bluecolored.bluemap.api.BlueMapMap");
         clsMarkerSet = Class.forName("de.bluecolored.bluemap.api.markers.MarkerSet");
@@ -82,22 +80,17 @@ public class BlueMapIntegration {
         clsVector2d = Class.forName("com.flowpowered.math.vector.Vector2d");
         clsColor = Class.forName("de.bluecolored.bluemap.api.math.Color");
 
-        // Методы BlueMapAPI
         mGetInstance = clsBlueMapAPI.getMethod("getInstance");
         mGetMaps = clsBlueMapAPI.getMethod("getMaps");
-        
-        // Методы BlueMapMap
         mGetId = clsBlueMapMap.getMethod("getId");
         mGetMarkerSets = clsBlueMapMap.getMethod("getMarkerSets");
 
-        // Методы MarkerSet
         mMarkerSetBuilder = clsMarkerSet.getMethod("builder");
         Class<?> clsMarkerSetBuilder = mMarkerSetBuilder.getReturnType();
         mMarkerSetLabel = clsMarkerSetBuilder.getMethod("label", String.class);
         mMarkerSetBuild = clsMarkerSetBuilder.getMethod("build");
         mMarkerSetGetMarkers = clsMarkerSet.getMethod("getMarkers");
 
-        // Методы ShapeMarker
         mShapeMarkerBuilder = clsShapeMarker.getMethod("builder");
         Class<?> clsShapeMarkerBuilder = mShapeMarkerBuilder.getReturnType();
         mShapeMarkerLabel = clsShapeMarkerBuilder.getMethod("label", String.class);
@@ -109,7 +102,6 @@ public class BlueMapIntegration {
         mShapeMarkerDetail = clsShapeMarkerBuilder.getMethod("detail", String.class);
         mShapeMarkerBuild = clsShapeMarkerBuilder.getMethod("build");
 
-        // Методы POIMarker
         mPOIMarkerToBuilder = clsPOIMarker.getMethod("toBuilder");
         Class<?> clsPOIMarkerBuilder = mPOIMarkerToBuilder.getReturnType();
         mPOIMarkerLabel = clsPOIMarkerBuilder.getMethod("label", String.class);
@@ -117,7 +109,6 @@ public class BlueMapIntegration {
         mPOIMarkerDetail = clsPOIMarkerBuilder.getMethod("detail", String.class);
         mPOIMarkerBuild = clsPOIMarkerBuilder.getMethod("build");
 
-        // Конструкторы
         cVector2d = clsVector2d.getConstructor(double.class, double.class);
         cShape = clsShape.getConstructor(clsVector2d.arrayType());
         cColor = clsColor.getConstructor(int.class, int.class, int.class, float.class);
@@ -146,11 +137,9 @@ public class BlueMapIntegration {
             for (Object map : maps) {
                 String mapId = (String) mGetId.invoke(map);
                 
-                // Фильтр миров
                 if (!mapId.toLowerCase().contains("overworld") && !mapId.equals("world")) continue;
 
                 Map<String, Object> markerSets = (Map<String, Object>) mGetMarkerSets.invoke(map);
-                
                 Object markerSet = markerSets.get(MARKER_SET_ID);
                 
                 if (markerSet == null) {
@@ -174,7 +163,7 @@ public class BlueMapIntegration {
 
     private static void drawTown(Town town, Map<String, Object> markers) throws Exception {
         int r = 136, g = 136, b = 136;
-        String nationName = "";
+        String nationName = "Без нации";
 
         if (town.getNationName() != null) {
             Nation nation = NationsData.getNation(town.getNationName());
@@ -187,14 +176,25 @@ public class BlueMapIntegration {
             }
         }
 
-        Object fillColor = cColor.newInstance(r, g, b, 0.4f);
-        Object lineColor = cColor.newInstance(r, g, b, 0.9f);
+        // Цвета
+        Object fillColor;
+        Object lineColor;
+        // lineWidth = 0 убирает сетку, делая заливку сплошной
+        int lineWidth = 0; 
 
         if (town.isAtWar()) {
-            lineColor = cColor.newInstance(255, 0, 0, 1.0f);
+            fillColor = cColor.newInstance(255, 0, 0, 0.4f);
+            lineColor = cColor.newInstance(255, 0, 0, 0.0f);
         } else if (town.isCaptured()) {
-            lineColor = cColor.newInstance(255, 100, 0, 1.0f);
+            fillColor = cColor.newInstance(255, 140, 0, 0.4f);
+            lineColor = cColor.newInstance(255, 140, 0, 0.0f);
+        } else {
+            fillColor = cColor.newInstance(r, g, b, 0.4f);
+            // Прозрачная линия, чтобы не было границ между чанками
+            lineColor = cColor.newInstance(r, g, b, 0.0f); 
         }
+
+        String popup = buildPopup(town, nationName);
 
         for (ChunkPos cp : town.getClaimedChunks()) {
             double x1 = cp.x * 16;
@@ -219,12 +219,12 @@ public class BlueMapIntegration {
             
             Object builder = mShapeMarkerBuilder.invoke(null);
             mShapeMarkerLabel.invoke(builder, town.getName());
-            mShapeMarkerShape.invoke(builder, shape, 64f);
-            mShapeMarkerDepthTest.invoke(builder, false);
+            mShapeMarkerShape.invoke(builder, shape, 64f); 
+            mShapeMarkerDepthTest.invoke(builder, false); 
             mShapeMarkerFillColor.invoke(builder, fillColor);
             mShapeMarkerLineColor.invoke(builder, lineColor);
-            mShapeMarkerLineWidth.invoke(builder, 2);
-            mShapeMarkerDetail.invoke(builder, buildPopup(town, nationName));
+            mShapeMarkerLineWidth.invoke(builder, lineWidth);
+            mShapeMarkerDetail.invoke(builder, popup);
             
             Object chunkMarker = mShapeMarkerBuild.invoke(builder);
             markers.put(markerId, chunkMarker);
@@ -239,7 +239,7 @@ public class BlueMapIntegration {
                 (double)town.getSpawnPos().getX(), 
                 (double)town.getSpawnPos().getY() + 2, 
                 (double)town.getSpawnPos().getZ());
-            mPOIMarkerDetail.invoke(builder, buildPopup(town, nationName));
+            mPOIMarkerDetail.invoke(builder, popup);
             
             Object spawnMarker = mPOIMarkerBuild.invoke(builder);
             markers.put(spawnId, spawnMarker);
@@ -248,29 +248,74 @@ public class BlueMapIntegration {
 
     private static String buildPopup(Town town, String nationName) {
         StringBuilder sb = new StringBuilder();
-        sb.append("<div style='text-align:center; font-family: Minecraft, sans-serif;'>");
-        sb.append("<h3 style='color:#FFD700; margin:0;'>🏰 ").append(town.getName()).append("</h3>");
         
-        if (!nationName.isEmpty()) {
-            sb.append("<div style='color:#55AAFF; font-weight:bold;'>🏛 ").append(nationName).append("</div>");
+        // Стили CSS
+        // Шрифт Segoe UI, жирность 600, закругленные углы 12px
+        String boxStyle = "font-family: 'Segoe UI', sans-serif; padding: 15px; background: rgba(20, 20, 30, 0.95); " +
+                          "border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.15); " + 
+                          "width: 240px; text-align: center; color: white; box-shadow: 0 5px 15px rgba(0,0,0,0.5);";
+        
+        String labelStyle = "font-size: 13px; font-weight: 600; color: #AAAAAA; margin-bottom: 2px;";
+        String valueStyle = "font-size: 16px; font-weight: 700; margin-bottom: 12px;";
+        
+        sb.append("<div style=\"").append(boxStyle).append("\">");
+
+        // 1. Нация
+        sb.append("<div style=\"").append(labelStyle).append("\">Нация:</div>");
+        
+        String nColor = "#FFFFFF";
+        if (town.getNationName() != null) {
+             Nation nation = NationsData.getNation(town.getNationName());
+             if (nation != null) {
+                 int hex = nation.getColor().getHex();
+                 nColor = String.format("#%06X", (0xFFFFFF & hex));
+             }
         }
+        sb.append("<div style=\"").append(valueStyle).append("color:").append(nColor).append(";\">")
+          .append(nationName).append("</div>");
 
-        if (town.isAtWar()) sb.append("<div style='color:#FF0000; font-weight:bold;'>⚔ ВОЙНА</div>");
-        if (town.isCaptured()) sb.append("<div style='color:#FFAA00; font-weight:bold;'>🏴 ЗАХВАЧЕН</div>");
+        // 2. Город
+        sb.append("<div style=\"").append(labelStyle).append("\">Город:</div>");
+        sb.append("<div style=\"").append(valueStyle).append("color: #FFD700;\">")
+          .append(town.getName()).append("</div>");
 
-        sb.append("<hr>");
-        sb.append("<div>👥 Жителей: <b>").append(town.getMembers().size()).append("</b></div>");
-        sb.append("<div>📍 Чанков: <b>").append(town.getClaimedChunks().size()).append("</b></div>");
-        sb.append("<div>⚔ PvP: <b>").append(town.isPvpEnabled() ? "<span style='color:red'>ON</span>" : "<span style='color:green'>OFF</span>").append("</b></div>");
-        
+        // 3. Разделитель
+        sb.append("<hr style=\"border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin: 10px 0;\">");
+
+        // 4. Мэр
         String mayorName = "Неизвестно";
         if (NationsData.getServer() != null) {
             var p = NationsData.getServer().getPlayerList().getPlayer(town.getMayor());
             if (p != null) mayorName = p.getName().getString();
         }
-        sb.append("<div style='margin-top:5px;'>👑 Правитель: <span style='color:gold;'>").append(mayorName).append("</span></div>");
-        sb.append("</div>");
+        sb.append("<div style=\"").append(labelStyle).append("\">Мэр:</div>");
+        sb.append("<div style=\"").append(valueStyle).append("\">").append(mayorName).append("</div>");
+
+        // 5. Жители (списком)
+        sb.append("<div style=\"").append(labelStyle).append("\">Жители:</div>");
+        sb.append("<div style=\"font-size: 13px; color: #DDDDDD; line-height: 1.4;\">");
         
+        List<String> names = new ArrayList<>();
+        int limit = 0;
+        for (UUID id : town.getMembers()) {
+            if (limit >= 12) {
+                names.add("и др.");
+                break;
+            }
+            if (NationsData.getServer() != null) {
+                var p = NationsData.getServer().getPlayerList().getPlayer(id);
+                if (p != null) names.add(p.getName().getString());
+                else names.add("оффлайн");
+            } else {
+                names.add("?");
+            }
+            limit++;
+        }
+        sb.append(String.join(", ", names));
+        
+        sb.append("</div>"); // residents
+        sb.append("</div>"); // box
+
         return sb.toString();
     }
 }
