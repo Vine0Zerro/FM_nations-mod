@@ -38,7 +38,7 @@ minecraft {
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
-    compileOnly "org.dynmap:dynmap-api:3.7-beta-3"  // Для интеграции с Dynmap
+    compileOnly "us.dynmap:DynmapCoreAPI:3.7-beta-6"  // Правильная зависимость для Dynmap API (для Minecraft 1.20.1)
 }
 
 processResources {
