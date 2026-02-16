@@ -63,30 +63,18 @@ public class BlueMapIntegration {
 
         try {
             loadClasses();
-            
-            // Подписываемся на onEnable
-            Method mOnEnable = clsBlueMapAPI.getMethod("onEnable", Consumer.class);
-            
-            // Создаем Consumer через лямбда-прокси не выйдет просто так, 
-            // поэтому используем простой трюк - проверяем API в тике сервера
-            // Но в BlueMap есть статический метод getInstance()
-            
-            // Попробуем получить инстанс сразу (если уже загружен)
             checkApi();
-            
-            // Или зарегистрируем листенер (сложно через рефлексию с функциональным интерфейсом)
-            // Проще периодически проверять в updateAllMarkers
-            
             NationsMod.LOGGER.info("BlueMap обнаружен, интеграция готова.");
             enabled = true;
-            
         } catch (Exception e) {
             NationsMod.LOGGER.error("Ошибка инициализации BlueMap интеграции: " + e.getMessage());
-            e.printStackTrace();
+            // e.printStackTrace(); // Можно включить для отладки
         }
     }
 
     private static void loadClasses() throws ClassNotFoundException, NoSuchMethodException {
+        // Загружаем классы по имени. 
+        // ВАЖНО: Vector2d берем из flow-math, который есть в BlueMap
         clsBlueMapAPI = Class.forName("de.bluecolored.bluemap.api.BlueMapAPI");
         clsBlueMapMap = Class.forName("de.bluecolored.bluemap.api.BlueMapMap");
         clsMarkerSet = Class.forName("de.bluecolored.bluemap.api.markers.MarkerSet");
@@ -96,12 +84,15 @@ public class BlueMapIntegration {
         clsVector2d = Class.forName("com.flowpowered.math.vector.Vector2d");
         clsColor = Class.forName("de.bluecolored.bluemap.api.math.Color");
 
+        // Методы BlueMapAPI
         mGetInstance = clsBlueMapAPI.getMethod("getInstance");
         mGetMaps = clsBlueMapAPI.getMethod("getMaps");
         
+        // Методы BlueMapMap
         mGetId = clsBlueMapMap.getMethod("getId");
         mGetMarkerSets = clsBlueMapMap.getMethod("getMarkerSets");
 
+        // Методы MarkerSet
         mMarkerSetBuilder = clsMarkerSet.getMethod("builder");
         Class<?> clsMarkerSetBuilder = mMarkerSetBuilder.getReturnType();
         mMarkerSetLabel = clsMarkerSetBuilder.getMethod("label", String.class);
@@ -109,6 +100,7 @@ public class BlueMapIntegration {
         mMarkerSetBuild = clsMarkerSetBuilder.getMethod("build");
         mMarkerSetGetMarkers = clsMarkerSet.getMethod("getMarkers");
 
+        // Методы ShapeMarker
         mShapeMarkerBuilder = clsShapeMarker.getMethod("builder");
         Class<?> clsShapeMarkerBuilder = mShapeMarkerBuilder.getReturnType();
         mShapeMarkerLabel = clsShapeMarkerBuilder.getMethod("label", String.class);
@@ -120,6 +112,7 @@ public class BlueMapIntegration {
         mShapeMarkerDetail = clsShapeMarkerBuilder.getMethod("detail", String.class);
         mShapeMarkerBuild = clsShapeMarkerBuilder.getMethod("build");
 
+        // Методы POIMarker
         mPOIMarkerToBuilder = clsPOIMarker.getMethod("toBuilder");
         Class<?> clsPOIMarkerBuilder = mPOIMarkerToBuilder.getReturnType();
         mPOIMarkerLabel = clsPOIMarkerBuilder.getMethod("label", String.class);
@@ -127,8 +120,9 @@ public class BlueMapIntegration {
         mPOIMarkerDetail = clsPOIMarkerBuilder.getMethod("detail", String.class);
         mPOIMarkerBuild = clsPOIMarkerBuilder.getMethod("build");
 
+        // Конструкторы
         cVector2d = clsVector2d.getConstructor(double.class, double.class);
-        cShape = clsShape.getConstructor(clsVector2d.arrayType()); // Vector2d[]
+        cShape = clsShape.getConstructor(clsVector2d.arrayType());
         cColor = clsColor.getConstructor(int.class, int.class, int.class, float.class);
     }
 
@@ -179,7 +173,6 @@ public class BlueMapIntegration {
             }
         } catch (Exception e) {
             NationsMod.LOGGER.error("Ошибка обновления маркеров BlueMap: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 
@@ -218,7 +211,6 @@ public class BlueMapIntegration {
             Object v3 = cVector2d.newInstance(x2, z2);
             Object v4 = cVector2d.newInstance(x1, z2);
             
-            // Создаем массив Vector2d[]
             Object pointsArray = java.lang.reflect.Array.newInstance(clsVector2d, 4);
             java.lang.reflect.Array.set(pointsArray, 0, v1);
             java.lang.reflect.Array.set(pointsArray, 1, v2);
