@@ -26,6 +26,6 @@ side="BOTH"
 [[dependencies.nations]]
 modId="bluemap"
 mandatory=false
-versionRange="[5.0,)"
+versionRange="[3.0,)" 
 ordering="AFTER"
 side="BOTH"
