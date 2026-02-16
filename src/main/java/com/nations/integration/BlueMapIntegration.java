@@ -16,7 +16,7 @@ public class BlueMapIntegration {
     private static Object blueMapAPI = null;
     private static final String MARKER_SET_ID = "nations_towns";
 
-    // --- Кэш рефлексии (классы и методы) ---
+    // Кэш рефлексии (оставим как было, тут ничего не меняется)
     private static Class<?> clsBlueMapAPI, clsBlueMapMap, clsMarkerSet, clsShapeMarker, clsPOIMarker, clsShape, clsVector2d, clsColor;
     private static Method mGetInstance, mGetMaps, mGetId, mGetMarkerSets;
     private static Method mMarkerSetBuilder, mMarkerSetLabel, mMarkerSetBuild, mMarkerSetGetMarkers;
@@ -26,25 +26,10 @@ public class BlueMapIntegration {
 
     public static void init() {
         if (!ModList.get().isLoaded("bluemap")) return;
-
         try {
             loadClasses();
-            
-            // 1. Подписываемся на событие включения (если BlueMap загрузится позже)
-            Method mOnEnable = clsBlueMapAPI.getMethod("onEnable", Consumer.class);
-            // Сложно сделать Consumer через рефлексию, поэтому используем стратегию поллинга и прямой проверки
-            
-            // 2. Проверяем прямо сейчас (если BlueMap уже загружен)
             checkApi();
-            
-            if (blueMapAPI != null) {
-                enabled = true;
-                updateAllMarkers(); // Рисуем сразу при старте!
-                NationsMod.LOGGER.info("BlueMap подключен и обновлен.");
-            } else {
-                NationsMod.LOGGER.info("BlueMap API не готов, ожидание...");
-                enabled = true; // Разрешаем попытки обновления в тиках
-            }
+            enabled = true;
         } catch (Exception e) {
             NationsMod.LOGGER.error("BlueMap init error: " + e.getMessage());
         }
@@ -134,28 +119,22 @@ public class BlueMapIntegration {
         }
     }
 
-    // === Рисование объединенного контура ===
     private static void drawTownMerged(Town town, Map<String, Object> markers) throws Exception {
         Set<ChunkPos> chunks = town.getClaimedChunks();
         if (chunks.isEmpty()) return;
 
-        // 1. Собираем грани (алгоритм объединения)
         Set<String> edges = new HashSet<>();
         for (ChunkPos cp : chunks) {
-            double x1 = cp.x * 16;
-            double z1 = cp.z * 16;
-            double x2 = x1 + 16;
-            double z2 = z1 + 16;
+            double x1 = cp.x * 16; double z1 = cp.z * 16;
+            double x2 = x1 + 16; double z2 = z1 + 16;
             toggleEdge(edges, x1, z1, x2, z1);
             toggleEdge(edges, x2, z1, x2, z2);
             toggleEdge(edges, x2, z2, x1, z2);
             toggleEdge(edges, x1, z2, x1, z1);
         }
 
-        // 2. Строим полигоны
         List<List<Point>> polygons = tracePolygons(edges);
 
-        // 3. Цвета
         int r = 136, g = 136, b = 136;
         String nationName = "Без нации";
         if (town.getNationName() != null) {
@@ -179,8 +158,8 @@ public class BlueMapIntegration {
         }
 
         String popup = buildPopup(town, nationName, r, g, b);
-
         int polyIndex = 0;
+
         for (List<Point> polyPoints : polygons) {
             Object vectorArray = java.lang.reflect.Array.newInstance(clsVector2d, polyPoints.size());
             for (int i = 0; i < polyPoints.size(); i++) {
@@ -190,14 +169,13 @@ public class BlueMapIntegration {
             }
 
             Object shape = cShape.newInstance(vectorArray);
-            
             Object builder = mShapeMarkerBuilder.invoke(null);
             mShapeMarkerLabel.invoke(builder, town.getName());
             mShapeMarkerShape.invoke(builder, shape, 64f);
             mShapeMarkerDepthTest.invoke(builder, false);
             mShapeMarkerFillColor.invoke(builder, fillColor);
             mShapeMarkerLineColor.invoke(builder, lineColor);
-            mShapeMarkerLineWidth.invoke(builder, 3); // Жирная граница по краю
+            mShapeMarkerLineWidth.invoke(builder, 3);
             mShapeMarkerDetail.invoke(builder, popup);
 
             Object marker = mShapeMarkerBuild.invoke(builder);
@@ -261,45 +239,39 @@ public class BlueMapIntegration {
     private static String buildPopup(Town town, String nationName, int r, int g, int b) {
         StringBuilder sb = new StringBuilder();
         
-        // CSS
-        // margin: -10px и width: 100% заставляют наш блок заполнить стандартный пузырь полностью
-        String containerStyle = "font-family: 'Segoe UI', sans-serif; background: rgba(15, 15, 20, 0.95); " +
-                                "padding: 15px; border-radius: 8px; color: #fff; min-width: 260px; " +
-                                "margin: -10px; border: 1px solid rgba(255,255,255,0.1);";
-        
-        String centerStyle = "text-align: center; margin-bottom: 10px;";
-        String leftStyle = "text-align: left;";
-        String rowStyle = "margin-bottom: 4px; font-size: 14px; line-height: 1.4;";
-        String labelStyle = "color: #bbb; font-weight: 600; margin-right: 6px;";
-        String valStyle = "color: #fff; font-weight: 500;";
-        
+        // CSS стили
+        // min-width: 250px для ширины
+        // Используем стандартные шрифты
+        String mainStyle = "font-family: 'Segoe UI', sans-serif; color: #333;";
+        String centerStyle = "text-align: center;";
+        String rowStyle = "display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 14px;";
+        String labelStyle = "font-weight: 600; color: #555; white-space: nowrap;"; // серый жирный для лейблов
+        String valueStyle = "font-weight: 600; text-align: right; color: #000; padding-left: 10px;"; // черный для значений
+
         String titleColor = String.format("rgb(%d, %d, %d)", r, g, b);
         if (town.isAtWar()) titleColor = "#FF4444";
 
-        sb.append("<div style=\"").append(containerStyle).append("\">");
+        sb.append("<div style=\"").append(mainStyle).append("\">");
 
         // --- ВЕРХ (Центр) ---
         sb.append("<div style=\"").append(centerStyle).append("\">");
         
-        // Нация
-        String natColor = town.getNationName() != null ? titleColor : "#fff";
-        sb.append("<div style=\"font-size: 12px; color: #aaa; text-transform: uppercase;\">Нация</div>");
-        sb.append("<div style=\"font-size: 16px; font-weight: bold; color: ").append(natColor).append(";\">")
+        String natColor = town.getNationName() != null ? titleColor : "#555";
+        sb.append("<div style=\"font-size: 11px; text-transform: uppercase; color: #777;\">Нация</div>");
+        sb.append("<div style=\"font-size: 16px; font-weight: 800; color: ").append(natColor).append(";\">")
           .append(nationName).append("</div>");
         
-        // Город
-        sb.append("<div style=\"font-size: 12px; color: #aaa; text-transform: uppercase; margin-top: 5px;\">Город</div>");
-        sb.append("<div style=\"font-size: 20px; font-weight: 800; color: #FFD700;\">")
+        sb.append("<div style=\"font-size: 11px; text-transform: uppercase; color: #777; margin-top: 6px;\">Город</div>");
+        sb.append("<div style=\"font-size: 20px; font-weight: 900; color: #000;\">")
           .append(town.getName()).append("</div>");
         
-        sb.append("</div>"); // Конец центра
+        sb.append("</div>");
 
         // --- РАЗДЕЛИТЕЛЬ ---
-        sb.append("<hr style=\"border: 0; border-top: 1px solid rgba(255,255,255,0.4); margin: 10px 0;\">");
+        sb.append("<hr style=\"border: 0; border-top: 1px solid #ccc; margin: 10px 0;\">");
 
-        // --- НИЗ (Слева) ---
-        sb.append("<div style=\"").append(leftStyle).append("\">");
-
+        // --- НИЗ (Слева направо) ---
+        
         // Мэр
         String mayorName = "Неизвестно";
         if (NationsData.getServer() != null) {
@@ -308,18 +280,18 @@ public class BlueMapIntegration {
         }
         sb.append("<div style=\"").append(rowStyle).append("\">")
           .append("<span style=\"").append(labelStyle).append("\">Мэр:</span>")
-          .append("<span style=\"").append(valStyle).append("\">").append(mayorName).append("</span>")
+          .append("<span style=\"").append(valueStyle).append("\">").append(mayorName).append("</span>")
           .append("</div>");
 
         // Жители (в одну строку)
-        sb.append("<div style=\"").append(rowStyle).append("\">")
-          .append("<span style=\"").append(labelStyle).append("\">Жители:</span>")
-          .append("<span style=\"color: #ddd; font-size: 13px;\">");
+        sb.append("<div style=\"display: flex; margin-bottom: 4px; font-size: 14px;\">");
+        sb.append("<span style=\"").append(labelStyle).append(" margin-right: 10px;\">Жители:</span>");
+        sb.append("<span style=\"color: #333; line-height: 1.3; text-align: left;\">");
         
         List<String> names = new ArrayList<>();
         int limit = 0;
         for (UUID id : town.getMembers()) {
-            if (limit >= 15) { names.add("..."); break; }
+            if (limit >= 12) { names.add("..."); break; }
             if (NationsData.getServer() != null) {
                 var p = NationsData.getServer().getPlayerList().getPlayer(id);
                 names.add(p != null ? p.getName().getString() : "оффлайн");
@@ -329,18 +301,16 @@ public class BlueMapIntegration {
             limit++;
         }
         sb.append(String.join(", ", names));
-        sb.append("</span></div>"); // Конец жителей
+        sb.append("</span></div>");
 
         // Статусы
         if (town.isAtWar()) {
-            sb.append("<div style=\"margin-top:10px; color:#ff5555; font-weight:bold; text-align:center;\">⚠ ИДЕТ ВОЙНА</div>");
+            sb.append("<div style=\"margin-top:10px; color:#fff; background:#ff4444; font-weight:bold; text-align:center; padding: 4px; border-radius: 4px;\">⚠ ИДЕТ ВОЙНА</div>");
         } else if (town.isCaptured()) {
-            sb.append("<div style=\"margin-top:10px; color:#ffaa00; font-weight:bold; text-align:center;\">🏴 ЗАХВАЧЕН</div>");
+            sb.append("<div style=\"margin-top:10px; color:#fff; background:#ffaa00; font-weight:bold; text-align:center; padding: 4px; border-radius: 4px;\">🏴 ЗАХВАЧЕН</div>");
         }
 
-        sb.append("</div>"); // Конец низа
-        sb.append("</div>"); // Конец контейнера
-
+        sb.append("</div>");
         return sb.toString();
     }
 }
