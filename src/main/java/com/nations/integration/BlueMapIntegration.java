@@ -103,7 +103,7 @@ public class BlueMapIntegration {
 
                 Map<String, Object> markerSets = (Map<String, Object>) mGetMarkerSets.invoke(map);
                 Object markerSet = markerSets.get(MARKER_SET_ID);
-                
+
                 if (markerSet == null) {
                     Object builder = mMarkerSetBuilder.invoke(null);
                     mMarkerSetLabel.invoke(builder, "Города и Нации");
@@ -129,8 +129,10 @@ public class BlueMapIntegration {
 
         Set<String> edges = new HashSet<>();
         for (ChunkPos cp : chunks) {
-            double x1 = cp.x * 16; double z1 = cp.z * 16;
-            double x2 = x1 + 16; double z2 = z1 + 16;
+            double x1 = cp.x * 16;
+            double z1 = cp.z * 16;
+            double x2 = x1 + 16;
+            double z2 = z1 + 16;
             toggleEdge(edges, x1, z1, x2, z1);
             toggleEdge(edges, x2, z1, x2, z2);
             toggleEdge(edges, x2, z2, x1, z2);
@@ -147,7 +149,9 @@ public class BlueMapIntegration {
             Nation nation = NationsData.getNation(town.getNationName());
             if (nation != null) {
                 int hex = nation.getColor().getHex();
-                r = (hex >> 16) & 0xFF; g = (hex >> 8) & 0xFF; b = (hex) & 0xFF;
+                r = (hex >> 16) & 0xFF;
+                g = (hex >> 8) & 0xFF;
+                b = (hex) & 0xFF;
                 nationName = nation.getName();
                 if (nation.getLeader().equals(town.getMayor())) isCapital = true;
             }
@@ -193,11 +197,14 @@ public class BlueMapIntegration {
             String spawnId = "spawn_" + town.getName();
             Object builder = mPOIMarkerToBuilder.invoke(null);
             mPOIMarkerLabel.invoke(builder, town.getName());
-            mPOIMarkerPosition.invoke(builder, (double)town.getSpawnPos().getX(), (double)town.getSpawnPos().getY() + 2, (double)town.getSpawnPos().getZ());
+            mPOIMarkerPosition.invoke(builder,
+                    (double) town.getSpawnPos().getX(),
+                    (double) town.getSpawnPos().getY() + 2,
+                    (double) town.getSpawnPos().getZ());
             mPOIMarkerDetail.invoke(builder, popup);
-            
+
             if (isCapital) {
-                mPOIMarkerIcon.invoke(builder, ICON_CROWN_BASE64, 16, 16); 
+                mPOIMarkerIcon.invoke(builder, ICON_CROWN_BASE64, 16, 16);
             } else {
                 mPOIMarkerIcon.invoke(builder, ICON_TOWN_BASE64, 8, 8);
             }
@@ -221,8 +228,9 @@ public class BlueMapIntegration {
             String[] parts = edge.split(">");
             String[] p1 = parts[0].split(",");
             String[] p2 = parts[1].split(",");
-            pathMap.put(new Point(Double.parseDouble(p1[0]), Double.parseDouble(p1[1])),
-                        new Point(Double.parseDouble(p2[0]), Double.parseDouble(p2[1])));
+            pathMap.put(
+                    new Point(Double.parseDouble(p1[0]), Double.parseDouble(p1[1])),
+                    new Point(Double.parseDouble(p2[0]), Double.parseDouble(p2[1])));
         }
         while (!pathMap.isEmpty()) {
             List<Point> poly = new ArrayList<>();
@@ -241,30 +249,43 @@ public class BlueMapIntegration {
 
     private static class Point {
         double x, z;
-        Point(double x, double z) { this.x = x; this.z = z; }
-        @Override public boolean equals(Object o) {
+
+        Point(double x, double z) {
+            this.x = x;
+            this.z = z;
+        }
+
+        @Override
+        public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
-            Point p = (Point) o; return Double.compare(p.x, x) == 0 && Double.compare(p.z, z) == 0;
+            Point p = (Point) o;
+            return Double.compare(p.x, x) == 0 && Double.compare(p.z, z) == 0;
         }
-        @Override public int hashCode() { return Objects.hash(x, z); }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(x, z);
+        }
     }
 
     private static String buildPopup(Town town, String nationName, int r, int g, int b) {
         StringBuilder sb = new StringBuilder();
-        
+
         // --- ДИЗАЙН ПАНЕЛИ ---
         String containerStyle = "font-family: 'Segoe UI', sans-serif; background: rgba(10, 10, 15, 0.95); " +
-                                "padding: 12px; border-radius: 8px; color: #fff; min-width: 260px; " +
-                                "margin: -10px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.8); " +
-                                "position: relative; z-index: 10000; pointer-events: auto;";
-        
-        String closeBtnStyle = "position: absolute; top: 2px; right: 8px; color: #aaa; font-size: 20px; cursor: pointer; font-weight: bold;";
+                "padding: 12px; border-radius: 8px; color: #fff; min-width: 260px; " +
+                "border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.8); " +
+                "position: relative; pointer-events: auto;";
 
-        // Grid для строк (Метка | Значение). gap: 10px
-        String gridStyle = "display: grid; grid-template-columns: min-content 1fr; align-items: baseline; column-gap: 10px; row-gap: 4px; font-size: 14px;";
-        
-        // Шрифты: метка серая обычная, значение жирное
+        // Крестик использует CSS-класс nations-close-btn для делегирования из JS
+        String closeBtnStyle = "position: absolute; top: 2px; right: 8px; color: #aaa; font-size: 20px; " +
+                "cursor: pointer; font-weight: bold; line-height: 1; padding: 2px 4px; " +
+                "transition: color 0.15s; user-select: none;";
+
+        String gridStyle = "display: grid; grid-template-columns: min-content 1fr; align-items: baseline; " +
+                "column-gap: 10px; row-gap: 4px; font-size: 14px;";
+
         String labelStyle = "color: #999; font-weight: 500; white-space: nowrap;";
         String valStyle = "font-weight: bold; text-align: left;";
 
@@ -272,50 +293,54 @@ public class BlueMapIntegration {
         if (town.isAtWar()) titleColor = "#FF4444";
 
         sb.append("<div class=\"nations-popup\" style=\"").append(containerStyle).append("\">");
-        
-        // Крестик закрытия: ищем родительский leaflet-popup и скрываем его
-        sb.append("<div style=\"").append(closeBtnStyle).append("\" onclick=\"var p=this.closest('.leaflet-popup'); if(p) p.style.display='none'; event.stopPropagation();\">×</div>");
+
+        // Крестик закрытия — класс nations-close-btn обрабатывается в JS через делегирование
+        sb.append("<div class=\"nations-close-btn\" style=\"").append(closeBtnStyle)
+                .append("\" onmouseover=\"this.style.color='#fff'\" onmouseout=\"this.style.color='#aaa'\">×</div>");
 
         // --- КОНТЕНТ ---
         sb.append("<div style=\"").append(gridStyle).append("\">");
 
-        // 1. Нация: Значение
-        String natColor = town.getNationName() != null ? titleColor : "#999"; 
+        // Нация
+        String natColor = town.getNationName() != null ? titleColor : "#999";
         sb.append("<div style=\"").append(labelStyle).append("\">Нация:</div>");
         sb.append("<div style=\"").append(valStyle).append("color:").append(natColor).append(";\">")
-          .append(nationName).append("</div>");
+                .append(nationName).append("</div>");
 
-        // 2. Город: Значение
+        // Город
         sb.append("<div style=\"").append(labelStyle).append("\">Город:</div>");
-        sb.append("<div style=\"").append(valStyle).append("color: #DDDDDD;\">") // Нейтральный цвет города
-          .append(town.getName()).append("</div>");
+        sb.append("<div style=\"").append(valStyle).append("color: #DDDDDD;\">")
+                .append(town.getName()).append("</div>");
 
-        sb.append("</div>"); // End top grid
+        sb.append("</div>");
 
-        // --- РАЗДЕЛИТЕЛЬ (Толще - 2px) ---
+        // Разделитель
         sb.append("<hr style=\"border: 0; border-top: 2px solid rgba(255,255,255,0.3); margin: 8px 0;\">");
 
-        // --- НИЗ ---
+        // Нижняя часть
         sb.append("<div style=\"").append(gridStyle).append("\">");
 
-        // 3. МЭР: Ник (Мэр желтый, шрифт такой же)
+        // Мэр
         String mayorName = "Неизвестно";
         if (NationsData.getServer() != null) {
             var p = NationsData.getServer().getPlayerList().getPlayer(town.getMayor());
             if (p != null) mayorName = p.getName().getString();
         }
         sb.append("<div style=\"").append(labelStyle).append("\">МЭР:</div>");
-        sb.append("<div style=\"").append(valStyle).append("color: #FFD700; font-size: 13px;\">") 
-          .append(mayorName).append("</div>");
+        sb.append("<div style=\"").append(valStyle).append("color: #FFD700; font-size: 13px;\">")
+                .append(mayorName).append("</div>");
 
-        // 4. Жители (сразу справа)
-        sb.append("<div style=\"").append(labelStyle).append("align-self: start;\">Жители:</div>"); 
+        // Жители
+        sb.append("<div style=\"").append(labelStyle).append("align-self: start;\">Жители:</div>");
         sb.append("<div style=\"").append(valStyle).append("color: #DDDDDD; font-size: 13px; line-height: 1.3;\">");
-        
+
         List<String> names = new ArrayList<>();
         int limit = 0;
         for (UUID id : town.getMembers()) {
-            if (limit >= 15) { names.add("..."); break; }
+            if (limit >= 15) {
+                names.add("...");
+                break;
+            }
             if (NationsData.getServer() != null) {
                 var p = NationsData.getServer().getPlayerList().getPlayer(id);
                 names.add(p != null ? p.getName().getString() : "оффлайн");
