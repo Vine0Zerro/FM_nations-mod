@@ -17,7 +17,8 @@ public class TownCommands {
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("town")
             .then(Commands.literal("create")
-                .then(Commands.argument("name", StringArgumentType.word())
+                // Используем string() для поддержки русского языка
+                .then(Commands.argument("name", StringArgumentType.string())
                     .executes(ctx -> createTown(ctx.getSource(),
                         StringArgumentType.getString(ctx, "name")))))
             .then(Commands.literal("delete")
@@ -27,7 +28,8 @@ public class TownCommands {
                     .executes(ctx -> invitePlayer(ctx.getSource(),
                         StringArgumentType.getString(ctx, "player")))))
             .then(Commands.literal("join")
-                .then(Commands.argument("town", StringArgumentType.word())
+                // Тут тоже string(), так как название города может быть на русском
+                .then(Commands.argument("town", StringArgumentType.string())
                     .executes(ctx -> joinTown(ctx.getSource(),
                         StringArgumentType.getString(ctx, "town")))))
             .then(Commands.literal("leave")
@@ -38,7 +40,7 @@ public class TownCommands {
                         StringArgumentType.getString(ctx, "player")))))
             .then(Commands.literal("info")
                 .executes(ctx -> townInfo(ctx.getSource()))
-                .then(Commands.argument("name", StringArgumentType.word())
+                .then(Commands.argument("name", StringArgumentType.string())
                     .executes(ctx -> townInfoByName(ctx.getSource(),
                         StringArgumentType.getString(ctx, "name")))))
             .then(Commands.literal("list")
@@ -84,7 +86,7 @@ public class TownCommands {
             .then(Commands.literal("log")
                 .executes(ctx -> showLog(ctx.getSource())))
             .then(Commands.literal("diplomacy")
-                .then(Commands.argument("nation", StringArgumentType.word())
+                .then(Commands.argument("nation", StringArgumentType.string())
                     .then(Commands.argument("status", StringArgumentType.word())
                         .executes(ctx -> setDiplomacy(ctx.getSource(),
                             StringArgumentType.getString(ctx, "nation"),
@@ -98,26 +100,23 @@ public class TownCommands {
             UUID uuid = player.getUUID();
 
             if (NationsData.getTownByPlayer(uuid) != null) {
-                source.sendFailure(Component.literal(
-                    "§8§l┃ §c✘ §fВы уже состоите в городе!"));
+                source.sendFailure(Component.literal("§8§l┃ §c✘ §fВы уже состоите в городе!"));
                 return 0;
             }
             if (NationsData.townExists(name)) {
-                source.sendFailure(Component.literal(
-                    "§8§l┃ §c✘ §fГород с таким именем уже существует!"));
+                source.sendFailure(Component.literal("§8§l┃ §c✘ §fГород с таким именем уже существует!"));
                 return 0;
             }
 
             Town town = new Town(name, uuid);
             ChunkPos cp = new ChunkPos(player.blockPosition());
             if (NationsData.getTownByChunk(cp) != null) {
-                source.sendFailure(Component.literal(
-                    "§8§l┃ §c✘ §fЭтот чанк уже занят другим городом!"));
+                source.sendFailure(Component.literal("§8§l┃ §c✘ §fЭтот чанк уже занят другим городом!"));
                 return 0;
             }
-           town.claimChunk(cp);
-town.setSpawnPos(player.blockPosition()); // <--- ДОБАВИТЬ ЭТУ СТРОКУ
-NationsData.addTown(town);
+            town.claimChunk(cp);
+            town.setSpawnPos(player.blockPosition()); // Устанавливаем спавн!
+            NationsData.addTown(town);
             Economy.deposit(uuid, 0);
 
             source.sendSuccess(() -> Component.literal(
@@ -147,6 +146,13 @@ NationsData.addTown(town);
             if (!town.hasPermission(player.getUUID(), TownRole.RULER)) {
                 source.sendFailure(Component.literal("§8§l┃ §c✘ §fТолько Правитель может удалить город!"));
                 return 0;
+            }
+            if (town.getNationName() != null) {
+                var nation = NationsData.getNation(town.getNationName());
+                if (nation != null) {
+                    nation.removeTown(town.getName());
+                    NationsData.save();
+                }
             }
             String townName = town.getName();
             NationsData.removeTown(townName);
