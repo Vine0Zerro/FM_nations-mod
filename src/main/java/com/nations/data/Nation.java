@@ -2,7 +2,6 @@ package com.nations.data;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-
 import java.util.*;
 
 public class Nation {
@@ -51,8 +50,7 @@ public class Nation {
     public boolean hasTown(String townName) { return towns.contains(townName); }
 
     public boolean isCapital(String townName) {
-        if (capitalTown != null) return capitalTown.equals(townName);
-        return false;
+        return capitalTown != null && capitalTown.equals(townName);
     }
 
     public void declareWar(String nationName) { warTargets.add(nationName); }
@@ -70,12 +68,7 @@ public class Nation {
     public Map<String, String> getAllDiplomacy() { return diplomacy; }
 
     public int getRating() {
-        int score = 0;
-        score += towns.size() * 50;
-        score += warsWon * 100;
-        score -= warsLost * 50;
-        score += townsCaptured * 75;
-        return Math.max(0, score);
+        return Math.max(0, towns.size() * 50 + warsWon * 100 - warsLost * 50 + townsCaptured * 75);
     }
 
     public int getTotalMembers() {
