@@ -17,7 +17,6 @@ public class TownCommands {
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("town")
             .then(Commands.literal("create")
-                // Используем string() для поддержки русского языка
                 .then(Commands.argument("name", StringArgumentType.string())
                     .executes(ctx -> createTown(ctx.getSource(),
                         StringArgumentType.getString(ctx, "name")))))
@@ -28,7 +27,6 @@ public class TownCommands {
                     .executes(ctx -> invitePlayer(ctx.getSource(),
                         StringArgumentType.getString(ctx, "player")))))
             .then(Commands.literal("join")
-                // Тут тоже string(), так как название города может быть на русском
                 .then(Commands.argument("town", StringArgumentType.string())
                     .executes(ctx -> joinTown(ctx.getSource(),
                         StringArgumentType.getString(ctx, "town")))))
@@ -115,7 +113,7 @@ public class TownCommands {
                 return 0;
             }
             town.claimChunk(cp);
-            town.setSpawnPos(player.blockPosition()); // Устанавливаем спавн!
+            town.setSpawnPos(player.blockPosition());
             NationsData.addTown(town);
             Economy.deposit(uuid, 0);
 
