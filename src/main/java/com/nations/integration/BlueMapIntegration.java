@@ -272,13 +272,11 @@ public class BlueMapIntegration {
     private static String buildPopup(Town town, String nationName, int r, int g, int b) {
         StringBuilder sb = new StringBuilder();
 
-        // --- ДИЗАЙН ПАНЕЛИ ---
         String containerStyle = "font-family: 'Segoe UI', sans-serif; background: rgba(10, 10, 15, 0.95); " +
                 "padding: 12px; border-radius: 8px; color: #fff; min-width: 260px; " +
                 "border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.8); " +
                 "position: relative; pointer-events: auto;";
 
-        // Крестик использует CSS-класс nations-close-btn для делегирования из JS
         String closeBtnStyle = "position: absolute; top: 2px; right: 8px; color: #aaa; font-size: 20px; " +
                 "cursor: pointer; font-weight: bold; line-height: 1; padding: 2px 4px; " +
                 "transition: color 0.15s; user-select: none;";
@@ -294,11 +292,10 @@ public class BlueMapIntegration {
 
         sb.append("<div class=\"nations-popup\" style=\"").append(containerStyle).append("\">");
 
-        // Крестик закрытия — класс nations-close-btn обрабатывается в JS через делегирование
+        // Крестик закрытия
         sb.append("<div class=\"nations-close-btn\" style=\"").append(closeBtnStyle)
                 .append("\" onmouseover=\"this.style.color='#fff'\" onmouseout=\"this.style.color='#aaa'\">×</div>");
 
-        // --- КОНТЕНТ ---
         sb.append("<div style=\"").append(gridStyle).append("\">");
 
         // Нация
@@ -317,7 +314,6 @@ public class BlueMapIntegration {
         // Разделитель
         sb.append("<hr style=\"border: 0; border-top: 2px solid rgba(255,255,255,0.3); margin: 8px 0;\">");
 
-        // Нижняя часть
         sb.append("<div style=\"").append(gridStyle).append("\">");
 
         // Мэр
