@@ -70,8 +70,9 @@ public class OpCreateTownNationCommand {
 
             boolean capitalFound = false;
             for (NationTemplate.TownTemplate tt : template.getTowns()) {
-                if (tt.name.equals(capitalName)) {
+                if (tt.name.equalsIgnoreCase(capitalName) || tt.name.equals(capitalName)) {
                     capitalFound = true;
+                    capitalName = tt.name;
                     break;
                 }
             }
