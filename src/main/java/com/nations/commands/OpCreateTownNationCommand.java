@@ -15,14 +15,16 @@ import java.util.*;
 public class OpCreateTownNationCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(Commands.literal("op_create_town_nation")
+        // /op_create_nation <template> "<capital>"
+        // Пример: /op_create_nation russia "Москва"
+        dispatcher.register(Commands.literal("op_create_nation")
             .requires(source -> source.hasPermission(4))
-            .then(Commands.argument("столица", StringArgumentType.word())
-                .then(Commands.argument("шаблон_и_лимит", StringArgumentType.greedyString())
+            .then(Commands.argument("template", StringArgumentType.word())
+                .then(Commands.argument("capital", StringArgumentType.string())
                     .executes(ctx -> {
-                        String capital = StringArgumentType.getString(ctx, "столица");
-                        String fullArgs = StringArgumentType.getString(ctx, "шаблон_и_лимит");
-                        return execute(ctx.getSource(), capital, fullArgs);
+                        String template = StringArgumentType.getString(ctx, "template");
+                        String capital = StringArgumentType.getString(ctx, "capital");
+                        return execute(ctx.getSource(), template, capital);
                     })
                 )
             )
@@ -32,51 +34,42 @@ public class OpCreateTownNationCommand {
             .requires(source -> source.hasPermission(4))
             .executes(ctx -> listTemplates(ctx.getSource()))
         );
+
+        dispatcher.register(Commands.literal("op_delete_nation")
+            .requires(source -> source.hasPermission(4))
+            .then(Commands.argument("template", StringArgumentType.word())
+                .executes(ctx -> {
+                    String template = StringArgumentType.getString(ctx, "template");
+                    return deleteNation(ctx.getSource(), template);
+                })
+            )
+        );
     }
 
-    private static int execute(CommandSourceStack source, String capitalName, String fullArgs) {
+    private static int execute(CommandSourceStack source, String templateKey, String capitalName) {
         try {
-            String[] parts = fullArgs.trim().split("\\s+");
-            if (parts.length < 2) {
-                source.sendFailure(Component.literal(
-                    "§8§l┃ §c✘ §fИспользование: §e/op_create_town_nation <столица> <шаблон> <лимит>\n" +
-                    "§8§l┃ §7Пример: §f/op_create_town_nation Москва Российская Федерация 100"));
-                return 0;
-            }
-
-            int chunkLimit;
-            try {
-                chunkLimit = Integer.parseInt(parts[parts.length - 1]);
-            } catch (NumberFormatException e) {
-                source.sendFailure(Component.literal(
-                    "§8§l┃ §c✘ §fПоследний аргумент должен быть числом (лимит чанков)!\n" +
-                    "§8§l┃ §7Пример: §f/op_create_town_nation Москва Российская Федерация 100"));
-                return 0;
-            }
-
-            StringBuilder templateNameBuilder = new StringBuilder();
-            for (int i = 0; i < parts.length - 1; i++) {
-                if (i > 0) templateNameBuilder.append(" ");
-                templateNameBuilder.append(parts[i]);
-            }
-            String templateName = templateNameBuilder.toString();
-
-            NationTemplate template = NationTemplate.getTemplate(templateName);
+            NationTemplate template = NationTemplate.getTemplate(templateKey);
             if (template == null) {
                 StringBuilder available = new StringBuilder();
                 for (String name : NationTemplate.getAvailableTemplates()) {
-                    available.append("\n§8§l┃ §7  • §f").append(name);
+                    NationTemplate t = NationTemplate.getTemplate(name);
+                    if (t != null) {
+                        available.append("\n§8§l┃ §7  • §e").append(name)
+                                 .append(" §8(§f").append(t.getNationName())
+                                 .append("§8, §e").append(t.getTotalChunks()).append(" §7чанков§8)");
+                    }
                 }
                 source.sendFailure(Component.literal(
-                    "§8§l┃ §c✘ §fШаблон '§e" + templateName + "§f' не найден!\n" +
+                    "§8§l┃ §c✘ §fШаблон '§e" + templateKey + "§f' не найден!\n" +
                     "§8§l┃ §7Доступные шаблоны:" + available));
                 return 0;
             }
 
             boolean capitalFound = false;
             for (NationTemplate.TownTemplate tt : template.getTowns()) {
-                if (tt.name.equalsIgnoreCase(capitalName)) {
+                if (tt.name.equalsIgnoreCase(capitalName) || tt.name.equals(capitalName)) {
                     capitalFound = true;
+                    capitalName = tt.name;
                     break;
                 }
             }
@@ -88,15 +81,8 @@ public class OpCreateTownNationCommand {
                 }
                 source.sendFailure(Component.literal(
                     "§8§l┃ §c✘ §fГород '§e" + capitalName + "§f' не найден в шаблоне!\n" +
-                    "§8§l┃ §7Города в шаблоне '§f" + templateName + "§7':" + townList));
-                return 0;
-            }
-
-            int totalNeeded = template.getTotalChunks();
-            if (chunkLimit < totalNeeded) {
-                source.sendFailure(Component.literal(
-                    "§8§l┃ §c✘ §fЛимит §e" + chunkLimit + " §fчанков недостаточен!\n" +
-                    "§8§l┃ §7Шаблон '§f" + templateName + "§7' требует §e" + totalNeeded + " §7чанков"));
+                    "§8§l┃ §7Города в шаблоне '§f" + template.getNationName() + "§7':" + townList + "\n" +
+                    "§8§l┃ §7Оборачивайте название в кавычки: §f\"Название\""));
                 return 0;
             }
 
@@ -143,7 +129,7 @@ public class OpCreateTownNationCommand {
                 return 0;
             }
 
-            return createNationWithTowns(source, player, template, playerChunk, capitalName, chunkLimit);
+            return createNationWithTowns(source, player, template, playerChunk, capitalName);
 
         } catch (Exception e) {
             source.sendFailure(Component.literal("§8§l┃ §c✘ §fОшибка: " + e.getMessage()));
@@ -157,12 +143,10 @@ public class OpCreateTownNationCommand {
             ServerPlayer player,
             NationTemplate template,
             ChunkPos centerChunk,
-            String capitalName,
-            int chunkLimit
+            String capitalName
     ) {
         UUID playerId = player.getUUID();
         List<Town> createdTowns = new ArrayList<>();
-        Town capitalTown = null;
 
         for (NationTemplate.TownTemplate tt : template.getTowns()) {
             Town town = new Town(tt.name, playerId);
@@ -194,10 +178,6 @@ public class OpCreateTownNationCommand {
 
             NationsData.addTown(town);
             createdTowns.add(town);
-
-            if (tt.name.equalsIgnoreCase(capitalName)) {
-                capitalTown = town;
-            }
         }
 
         Nation nation = new Nation(template.getNationName(), playerId, template.getColor());
@@ -216,7 +196,6 @@ public class OpCreateTownNationCommand {
 
         NationsData.save();
 
-        // Собираем информацию для вывода
         final int totalChunksUsed;
         {
             int count = 0;
@@ -229,7 +208,7 @@ public class OpCreateTownNationCommand {
         final StringBuilder townsList = new StringBuilder();
         for (Town town : createdTowns) {
             int chunks = town.getClaimedChunks().size();
-            String marker = town.getName().equalsIgnoreCase(capitalName) ? "§e👑 " : "§7🏠 ";
+            String marker = town.getName().equals(capitalName) ? "§e👑 " : "§7🏠 ";
             townsList.append("\n§8§l║ §f  ")
                      .append(marker).append("§f").append(town.getName())
                      .append(" §8— §e").append(chunks).append(" §7чанков");
@@ -238,7 +217,7 @@ public class OpCreateTownNationCommand {
         final String colorName = template.getColor().getDisplayName();
         final String nationNameFinal = template.getNationName();
         final String capitalNameFinal = capitalName;
-        final int chunkLimitFinal = chunkLimit;
+        final int totalTemplateChunks = template.getTotalChunks();
         final int centerX = centerChunk.x;
         final int centerZ = centerChunk.z;
 
@@ -247,8 +226,8 @@ public class OpCreateTownNationCommand {
             "§8§l║ §a✔ §fНация §e" + nationNameFinal + " §fсоздана!\n" +
             "§8§l║ §7Цвет: §f" + colorName + "\n" +
             "§8§l║ §7Столица: §e" + capitalNameFinal + "\n" +
-            "§8§l║ §7Лимит чанков: §e" + chunkLimitFinal + "\n" +
-            "§8§l║ §7Использовано: §e" + totalChunksUsed + "§7/§e" + chunkLimitFinal + "\n" +
+            "§8§l║ §7Размер нации: §e" + totalTemplateChunks + " §7чанков\n" +
+            "§8§l║ §7Заприватено: §e" + totalChunksUsed + "§7/§e" + totalTemplateChunks + "\n" +
             "§8§l║\n" +
             "§8§l║ §7Города:" + townsList + "\n" +
             "§8§l║\n" +
@@ -256,6 +235,32 @@ public class OpCreateTownNationCommand {
             "§8§l╚══════════════════════════════════════╝"
         ), true);
 
+        return 1;
+    }
+
+    private static int deleteNation(CommandSourceStack source, String templateKey) {
+        NationTemplate template = NationTemplate.getTemplate(templateKey);
+        if (template == null) {
+            source.sendFailure(Component.literal("§8§l┃ §c✘ §fШаблон '§e" + templateKey + "§f' не найден!"));
+            return 0;
+        }
+
+        if (!NationsData.nationExists(template.getNationName())) {
+            source.sendFailure(Component.literal("§8§l┃ §c✘ §fНация '§e" + template.getNationName() + "§f' не существует!"));
+            return 0;
+        }
+
+        for (NationTemplate.TownTemplate tt : template.getTowns()) {
+            if (NationsData.townExists(tt.name)) {
+                NationsData.removeTown(tt.name);
+            }
+        }
+
+        NationsData.removeNation(template.getNationName());
+        NationsData.save();
+
+        source.sendSuccess(() -> Component.literal(
+            "§8§l┃ §a✔ §fНация §e" + template.getNationName() + " §fи все её города удалены!"), true);
         return 1;
     }
 
@@ -283,11 +288,12 @@ public class OpCreateTownNationCommand {
         msg.append("§8§l║ §e📋 §fДоступные шаблоны наций:\n");
         msg.append("§8§l║\n");
 
-        for (String templateName : NationTemplate.getAvailableTemplates()) {
-            NationTemplate t = NationTemplate.getTemplate(templateName);
+        for (String templateKey : NationTemplate.getAvailableTemplates()) {
+            NationTemplate t = NationTemplate.getTemplate(templateKey);
             if (t == null) continue;
 
-            msg.append("§8§l║ §e▸ §f").append(t.getNationName())
+            msg.append("§8§l║ §e▸ §f").append(templateKey)
+               .append(" §8-> §f").append(t.getNationName())
                .append(" §8(§7").append(t.getColor().getDisplayName())
                .append("§8, §e").append(t.getTotalChunks()).append(" §7чанков§8)\n");
 
@@ -298,6 +304,8 @@ public class OpCreateTownNationCommand {
             msg.append("§8§l║\n");
         }
 
+        msg.append("§8§l║ §7Использование: §f/op_create_nation <шаблон> \"<столица>\"\n");
+        msg.append("§8§l║ §7Пример: §f/op_create_nation russia \"Москва\"\n");
         msg.append("§8§l╚══════════════════════════════════════╝");
         source.sendSuccess(() -> Component.literal(msg.toString()), false);
         return 1;
