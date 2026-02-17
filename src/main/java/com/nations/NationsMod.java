@@ -25,7 +25,7 @@ public class NationsMod {
     public static final String MODID = "nations";
     public static final Logger LOGGER = LogManager.getLogger();
     private int tickCounter = 0;
-    private static final int TAX_INTERVAL_TICKS = 20 * 60 * 60; // 1 час
+    private static final int TAX_INTERVAL_TICKS = 20 * 60 * 60;
 
     public NationsMod() {
         FMLJavaModLoadingContext.get().getModEventBus()
@@ -42,8 +42,7 @@ public class NationsMod {
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
         NationsData.load(event.getServer());
-        
-        // Инициализация BlueMap
+
         try {
             BlueMapIntegration.init();
         } catch (Exception e) {
@@ -64,13 +63,14 @@ public class NationsMod {
         EconomyCommands.register(event.getDispatcher());
         AllianceCommands.register(event.getDispatcher());
         RankingCommands.register(event.getDispatcher());
+        OpCreateTownNationCommand.register(event.getDispatcher());
     }
 
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         tickCounter++;
-        
+
         if (tickCounter >= TAX_INTERVAL_TICKS) {
             tickCounter = 0;
             collectAllTaxes();
