@@ -14,7 +14,7 @@ public class Town {
     private Set<UUID> members = new HashSet<>();
     private Map<UUID, TownRole> roles = new HashMap<>();
     private Set<ChunkPos> claimedChunks = new HashSet<>();
-    private Map<String, UUID> plots = new HashMap<>(); // "x,z" -> owner UUID
+    private Map<String, UUID> plots = new HashMap<>();
     private boolean pvpEnabled = false;
     private boolean destructionEnabled = false;
     private boolean isAtWar = false;
@@ -24,6 +24,7 @@ public class Town {
     private BlockPos spawnPos = null;
     private List<String> actionLog = new ArrayList<>();
     private long lastTaxCollection = 0;
+    private int customMaxChunks = -1;
 
     public Town(String name, UUID mayor) {
         this.name = name;
@@ -56,9 +57,11 @@ public class Town {
     public void setSpawnPos(BlockPos pos) { this.spawnPos = pos; }
     public long getLastTaxCollection() { return lastTaxCollection; }
     public void setLastTaxCollection(long time) { this.lastTaxCollection = time; }
+    public int getCustomMaxChunks() { return customMaxChunks; }
+    public void setCustomMaxChunks(int max) { this.customMaxChunks = max; }
 
-    // === Лимит чанков: 10 + 5 за каждого жителя ===
     public int getMaxChunks() {
+        if (customMaxChunks > 0) return customMaxChunks;
         return 10 + (members.size() * 5);
     }
 
@@ -88,7 +91,6 @@ public class Town {
     public void removeMember(UUID player) {
         members.remove(player);
         roles.remove(player);
-        // Удалить участки этого игрока
         plots.values().removeIf(uuid -> uuid.equals(player));
     }
 
@@ -99,7 +101,7 @@ public class Town {
     public void unclaimChunk(ChunkPos pos) { claimedChunks.remove(pos); }
     public boolean ownsChunk(ChunkPos pos) { return claimedChunks.contains(pos); }
 
-    // === Plots (участки) ===
+    // === Plots ===
     public void setPlotOwner(ChunkPos pos, UUID owner) {
         plots.put(pos.x + "," + pos.z, owner);
     }
@@ -122,7 +124,7 @@ public class Town {
         String timestamp = java.time.LocalDateTime.now()
             .format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"));
         actionLog.add("[" + timestamp + "] " + action);
-        if (actionLog.size() > 100) actionLog.remove(0); // макс 100 записей
+        if (actionLog.size() > 100) actionLog.remove(0);
     }
 
     public List<String> getActionLog() { return actionLog; }
@@ -152,6 +154,7 @@ public class Town {
         json.addProperty("captured", captured);
         if (capturedBy != null) json.addProperty("capturedBy", capturedBy);
         json.addProperty("lastTaxCollection", lastTaxCollection);
+        if (customMaxChunks > 0) json.addProperty("customMaxChunks", customMaxChunks);
 
         if (spawnPos != null) {
             JsonObject spawn = new JsonObject();
@@ -202,6 +205,7 @@ public class Town {
         if (json.has("captured")) town.captured = json.get("captured").getAsBoolean();
         if (json.has("capturedBy")) town.capturedBy = json.get("capturedBy").getAsString();
         if (json.has("lastTaxCollection")) town.lastTaxCollection = json.get("lastTaxCollection").getAsLong();
+        if (json.has("customMaxChunks")) town.customMaxChunks = json.get("customMaxChunks").getAsInt();
 
         if (json.has("spawn")) {
             JsonObject sp = json.getAsJsonObject("spawn");
