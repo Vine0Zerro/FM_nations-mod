@@ -140,7 +140,7 @@ public class BlueMapIntegration {
             Object shape=cShape.newInstance(va), bd=mShapeMarkerBuilder.invoke(null);
             mShapeMarkerLabel.invoke(bd,nation.getName()); mShapeMarkerShape.invoke(bd,shape,64f);
             mShapeMarkerDepthTest.invoke(bd,false); mShapeMarkerFillColor.invoke(bd,fillColor);
-            mShapeMarkerLineColor.invoke(bd,lineColor); mShapeMarkerLineWidth.invoke(bd,4);
+            mShapeMarkerLineColor.invoke(bd,lineColor); mShapeMarkerLineWidth.invoke(bd,3); // 3px border
             mShapeMarkerDetail.invoke(bd,popup);
             markers.put("nation_"+nation.getName()+"_"+(pi++), mShapeMarkerBuild.invoke(bd));
         }
@@ -163,13 +163,13 @@ public class BlueMapIntegration {
         }
         if (innerEdges.isEmpty()) return;
         int hex=nation.getColor().getHex(), r=(hex>>16)&0xFF, g=(hex>>8)&0xFF, b=hex&0xFF;
-        Object lineColor = cColor.newInstance(r, g, b, 0.8f);
+        Object lineColor = cColor.newInstance(r, g, b, 0.7f); // Transparent
         int ei=0;
         for (String edge : innerEdges) {
             String[] pts=edge.split(">"); String[] p1=pts[0].split(","), p2=pts[1].split(",");
             double ex1=Double.parseDouble(p1[0]),ez1=Double.parseDouble(p1[1]);
             double ex2=Double.parseDouble(p2[0]),ez2=Double.parseDouble(p2[1]);
-            double dx=0,dz=0; if(Math.abs(ex1-ex2)<0.1) dx=0.3; else dz=0.3;
+            double dx=0,dz=0; if(Math.abs(ex1-ex2)<0.1) dx=0.1; else dz=0.1;
             Object va=java.lang.reflect.Array.newInstance(clsVector2d,4);
             java.lang.reflect.Array.set(va,0,cVector2d.newInstance(ex1-dx,ez1-dz));
             java.lang.reflect.Array.set(va,1,cVector2d.newInstance(ex2+dx,ez1-dz));
@@ -178,7 +178,7 @@ public class BlueMapIntegration {
             Object shape=cShape.newInstance(va), bd=mShapeMarkerBuilder.invoke(null);
             mShapeMarkerLabel.invoke(bd,"Граница городов"); mShapeMarkerShape.invoke(bd,shape,64f);
             mShapeMarkerDepthTest.invoke(bd,false); mShapeMarkerFillColor.invoke(bd,lineColor);
-            mShapeMarkerLineColor.invoke(bd,lineColor); mShapeMarkerLineWidth.invoke(bd,2);
+            mShapeMarkerLineColor.invoke(bd,lineColor); mShapeMarkerLineWidth.invoke(bd,1); // 1px border
             mShapeMarkerDetail.invoke(bd,"");
             markers.put("inner_"+nation.getName()+"_"+(ei++), mShapeMarkerBuild.invoke(bd));
         }
@@ -187,8 +187,10 @@ public class BlueMapIntegration {
     private static void addInner(Set<String> ie, Map<ChunkPos,String> ctm, String my, ChunkPos nb, double x1, double z1, double x2, double z2) {
         String nt=ctm.get(nb);
         if (nt!=null && !nt.equals(my)) {
-            String k1=x1+","+z1+">"+x2+","+z2, k2=x2+","+z2+">"+x1+","+z1;
-            if (!ie.contains(k2)) ie.add(k1);
+            String k1;
+            if (x1 < x2 || (x1 == x2 && z1 < z2)) k1 = x1+","+z1+">"+x2+","+z2;
+            else k1 = x2+","+z2+">"+x1+","+z1;
+            ie.add(k1);
         }
     }
 
