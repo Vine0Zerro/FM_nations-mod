@@ -7,6 +7,9 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.TextColor;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
 
@@ -53,7 +56,7 @@ public class OpCreateTownNationCommand {
         try {
             NationTemplate template = NationTemplate.getTemplate(templateKey);
             if (template == null) {
-                source.sendFailure(Component.literal("§cШаблон не найден!"));
+                source.sendFailure(Component.literal("§cШаблон не найден! Используйте §e/op_templates"));
                 return 0;
             }
 
@@ -66,7 +69,11 @@ public class OpCreateTownNationCommand {
                 }
             }
             if (!capitalFound) {
-                source.sendFailure(Component.literal("§cСтолица не найдена в шаблоне!"));
+                StringBuilder towns = new StringBuilder("§cСтолица не найдена! Доступные города:\n");
+                for (NationTemplate.TownTemplate tt : template.getTowns()) {
+                    towns.append("§7 - §e").append(tt.name).append(" §8(").append(tt.getChunkCount()).append(" чанков)\n");
+                }
+                source.sendFailure(Component.literal(towns.toString()));
                 return 0;
             }
 
@@ -92,7 +99,7 @@ public class OpCreateTownNationCommand {
 
             List<ChunkCheckResult> conflicts = checkAllChunks(template, playerChunk);
             if (!conflicts.isEmpty()) {
-                source.sendFailure(Component.literal("§cТерритория занята!"));
+                source.sendFailure(Component.literal("§cТерритория занята! Конфликтов: " + conflicts.size()));
                 return 0;
             }
 
@@ -115,7 +122,7 @@ public class OpCreateTownNationCommand {
         for (NationTemplate.TownTemplate tt : template.getTowns()) {
             Town town = new Town(tt.name, playerId);
             town.setTaxRate(0.05);
-            town.setCustomMaxChunks(tt.getChunkCount());
+            town.setCustomMaxChunks(tt.getChunkCount() + 50);
 
             int claimed = 0;
             for (int[] offset : tt.chunks) {
@@ -148,7 +155,18 @@ public class OpCreateTownNationCommand {
         for (Town town : createdTowns) Economy.createTownBalance(town.getName());
         NationsData.save();
 
-        source.sendSuccess(() -> Component.literal("§aНация " + template.getNationName() + " создана!"), true);
+        // Цвет нации в сообщении
+        int hex = template.getColor().getHex();
+        MutableComponent nationNameColored = Component.literal(template.getNationName())
+            .setStyle(Style.EMPTY.withColor(TextColor.fromRgb(hex)).withBold(true));
+
+        MutableComponent msg = Component.literal("§a✔ Нация ")
+            .append(nationNameColored)
+            .append(Component.literal(" §aсоздана! §7(")
+                .append(Component.literal(createdTowns.size() + " городов, " + template.getTotalChunks() + " чанков"))
+                .append(Component.literal("§7)")));
+
+        source.sendSuccess(() -> msg, true);
         return 1;
     }
 
@@ -158,12 +176,23 @@ public class OpCreateTownNationCommand {
             source.sendFailure(Component.literal("§cНация не найдена"));
             return 0;
         }
+
+        int hex = template.getColor().getHex();
+        String nationName = template.getNationName();
+
         for (NationTemplate.TownTemplate tt : template.getTowns()) {
             if (NationsData.townExists(tt.name)) NationsData.removeTown(tt.name);
         }
-        NationsData.removeNation(template.getNationName());
+        NationsData.removeNation(nationName);
         NationsData.save();
-        source.sendSuccess(() -> Component.literal("§aНация удалена"), true);
+
+        MutableComponent nationColored = Component.literal(nationName)
+            .setStyle(Style.EMPTY.withColor(TextColor.fromRgb(hex)).withBold(true));
+        MutableComponent msg = Component.literal("§a✔ Нация ")
+            .append(nationColored)
+            .append(Component.literal(" §aудалена"));
+
+        source.sendSuccess(() -> msg, true);
         return 1;
     }
 
@@ -171,13 +200,13 @@ public class OpCreateTownNationCommand {
         List<String> towns = new ArrayList<>();
         for (Town t : NationsData.getAllTowns()) towns.add(t.getName());
         for (String t : towns) NationsData.removeTown(t);
-        
+
         List<String> nations = new ArrayList<>();
         for (Nation n : NationsData.getAllNations()) nations.add(n.getName());
         for (String n : nations) NationsData.removeNation(n);
-        
+
         NationsData.save();
-        source.sendSuccess(() -> Component.literal("§aВсе данные удалены"), true);
+        source.sendSuccess(() -> Component.literal("§a✔ Все нации и города удалены"), true);
         return 1;
     }
 
@@ -195,10 +224,18 @@ public class OpCreateTownNationCommand {
     }
 
     private static int listTemplates(CommandSourceStack source) {
-        StringBuilder msg = new StringBuilder("§eШаблоны:\n");
+        StringBuilder msg = new StringBuilder("\n§8§l╔══ §6§l🏛 ШАБЛОНЫ НАЦИЙ §8§l══╗\n");
         for (String key : NationTemplate.getAvailableTemplates()) {
-            msg.append(" - ").append(key).append("\n");
+            NationTemplate t = NationTemplate.getTemplate(key);
+            if (t != null) {
+                msg.append("§8§l║ §e").append(key)
+                   .append(" §8— §f").append(t.getNationName())
+                   .append(" §8(§7").append(t.getTotalChunks()).append(" чанков, ")
+                   .append(t.getTowns().size()).append(" городов§8)\n");
+            }
         }
+        msg.append("§8§l╚════════════════════╝\n");
+        msg.append("§7Использование: §e/op_create_nation <шаблон> \"<столица>\"\n");
         source.sendSuccess(() -> Component.literal(msg.toString()), false);
         return 1;
     }
