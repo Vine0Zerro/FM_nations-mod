@@ -251,12 +251,14 @@ public class BlueMapIntegration {
     //  detail = HTML попап (при клике)
     // ================================================================
 
-    private static void drawNationTownBorders(Nation nation, Map<String, Object> markers) throws Exception {
+        private static void drawNationTownBorders(Nation nation, Map<String, Object> markers) throws Exception {
         List<String> townNames = new ArrayList<>(nation.getTowns());
 
         int hex = nation.getColor().getHex();
         int cr = (hex >> 16) & 0xFF, cg = (hex >> 8) & 0xFF, cb = hex & 0xFF;
         int lr = Math.min(255, cr + 60), lg = Math.min(255, cg + 60), lb = Math.min(255, cb + 60);
+        Object townLine = cColor.newInstance(lr, lg, lb, 0.5f);
+        Object noFill = cColor.newInstance(0, 0, 0, 0.0f);
 
         for (String townName : townNames) {
             Town town = NationsData.getTown(townName);
@@ -264,33 +266,22 @@ public class BlueMapIntegration {
 
             Set<String> townEdges = calcEdges(town.getClaimedChunks());
             List<List<Point>> townPolygons = tracePolygons(townEdges);
-
-            // detail = HTML попап при клике на территорию
-            String popup = buildTownPopup(town, nation);
+            String townPopup = buildTownPopup(town, nation);
 
             int j = 0;
             for (List<Point> poly : townPolygons) {
                 if (poly.size() < 3) continue;
 
-                Object fill, line;
-                int width;
-
                 if (townNames.size() == 1) {
-                    // Единственный город — заливка + граница
-                    fill = cColor.newInstance(cr, cg, cb, 0.22f);
-                    line = cColor.newInstance(cr, cg, cb, 1.0f);
-                    width = 3;
+                    Object fill = cColor.newInstance(cr, cg, cb, 0.22f);
+                    Object line2 = cColor.newInstance(cr, cg, cb, 1.0f);
+                    // Важно: label = townName для тултипа, detail = townPopup для клика
+                    markers.put("townborder_" + townName + "_" + (j++),
+                        createShapeMarker(townName, createShape(poly), fill, line2, 3, townPopup));
                 } else {
-                    // Несколько городов — без заливки, тонкая граница
-                    fill = cColor.newInstance(0, 0, 0, 0.0f);
-                    line = cColor.newInstance(lr, lg, lb, 0.5f);
-                    width = 1;
+                    markers.put("townborder_" + townName + "_" + (j++),
+                        createShapeMarker(townName, createShape(poly), noFill, townLine, 1, townPopup));
                 }
-
-                // label = название города (BlueMap показывает при наведении)
-                // detail = HTML попап (BlueMap показывает при клике)
-                markers.put("townborder_" + townName + "_" + (j++),
-                    createShapeMarker(townName, createShape(poly), fill, line, width, popup));
             }
         }
     }
