@@ -122,14 +122,16 @@ public class BlueMapIntegration {
                 tMarkers.clear();
                 iMarkers.clear();
 
+                // Рисуем каждый город отдельно (с заливкой и попапом)
                 for (Nation nation : NationsData.getAllNations()) {
-                    try { drawNationTerritory(nation, tMarkers); } catch (Exception e) {}
-                    try { drawNationTownBorders(nation, tMarkers); } catch (Exception e) {}
+                    try { drawNationTowns(nation, tMarkers); } catch (Exception e) { e.printStackTrace(); }
                 }
+
+                // Города без нации
                 for (Town town : NationsData.getAllTowns()) {
                     if (town.getNationName() == null)
-                        try { drawStandaloneTown(town, tMarkers); } catch (Exception e) {}
-                    try { drawTownIcon(town, iMarkers); } catch (Exception e) {}
+                        try { drawStandaloneTown(town, tMarkers); } catch (Exception e) { e.printStackTrace(); }
+                    try { drawTownIcon(town, iMarkers); } catch (Exception e) { e.printStackTrace(); }
                 }
             }
         } catch (Exception e) { e.printStackTrace(); }
@@ -146,59 +148,34 @@ public class BlueMapIntegration {
         return set;
     }
 
-    // ── Территория нации (общий полигон) ──────────────────────────
-    private static void drawNationTerritory(Nation nation, Map<String, Object> markers) throws Exception {
-        Set<ChunkPos> allChunks = new HashSet<>();
-        for (String tn : nation.getTowns()) {
-            Town t = NationsData.getTown(tn);
-            if (t != null) allChunks.addAll(t.getClaimedChunks());
-        }
-        if (allChunks.isEmpty()) return;
-
-        Set<String> outerEdges = calcEdges(allChunks);
-        List<List<Point>> polygons = tracePolygons(outerEdges);
-
+    // ══════════════════════════════════════════════════════════════
+    //  Каждый город нации — отдельный полигон с ЗАЛИВКОЙ и ПОПАПОМ
+    //  Клик работает по ВСЕЙ территории, не только по границе
+    // ══════════════════════════════════════════════════════════════
+    private static void drawNationTowns(Nation nation, Map<String, Object> markers) throws Exception {
         int hex = nation.getColor().getHex();
         int cr = (hex >> 16) & 0xFF, cg = (hex >> 8) & 0xFF, cb = hex & 0xFF;
+
+        // Заливка — цвет нации, полупрозрачная
         Object fill = cColor.newInstance(cr, cg, cb, 0.22f);
+        // Граница — цвет нации, непрозрачная, толщина 3
         Object line = cColor.newInstance(cr, cg, cb, 1.0f);
 
-        int i = 0;
-        for (List<Point> poly : polygons)
-            markers.put("nation_" + nation.getName() + "_" + (i++),
-                    createShapeMarker(nation.getName(), createShape(poly), fill, line, 3, ""));
-    }
-
-    // ── Границы городов внутри нации ──────────────────────────────
-    private static void drawNationTownBorders(Nation nation, Map<String, Object> markers) throws Exception {
-        List<String> townNames = new ArrayList<>(nation.getTowns());
-
-        int hex = nation.getColor().getHex();
-        int cr = (hex >> 16) & 0xFF, cg = (hex >> 8) & 0xFF, cb = hex & 0xFF;
-        int lr = Math.min(255, cr + 60), lg = Math.min(255, cg + 60), lb = Math.min(255, cb + 60);
-        Object townLine = cColor.newInstance(lr, lg, lb, 0.5f);
-        Object noFill   = cColor.newInstance(0, 0, 0, 0.0f);
-
-        for (String townName : townNames) {
+        for (String townName : nation.getTowns()) {
             Town town = NationsData.getTown(townName);
             if (town == null || town.getClaimedChunks().isEmpty()) continue;
 
-            Set<String> townEdges = calcEdges(town.getClaimedChunks());
-            List<List<Point>> townPolygons = tracePolygons(townEdges);
+            Set<String> edges = calcEdges(town.getClaimedChunks());
+            List<List<Point>> polygons = tracePolygons(edges);
             String popup = buildTownPopup(town, nation);
 
             int j = 0;
-            for (List<Point> poly : townPolygons) {
+            for (List<Point> poly : polygons) {
                 if (poly.size() < 3) continue;
-                if (townNames.size() == 1) {
-                    Object fill  = cColor.newInstance(cr, cg, cb, 0.22f);
-                    Object line2 = cColor.newInstance(cr, cg, cb, 1.0f);
-                    markers.put("townborder_" + townName + "_" + (j++),
-                            createShapeMarker(townName, createShape(poly), fill, line2, 3, popup));
-                } else {
-                    markers.put("townborder_" + townName + "_" + (j++),
-                            createShapeMarker(townName, createShape(poly), noFill, townLine, 1, popup));
-                }
+                // Каждый город — полигон с ЗАЛИВКОЙ (кликабельная вся площадь)
+                // Граница 3px — одинаковая толщина для всех
+                markers.put("town_" + townName + "_" + (j++),
+                        createShapeMarker(townName, createShape(poly), fill, line, 3, popup));
             }
         }
     }
@@ -208,14 +185,18 @@ public class BlueMapIntegration {
         if (town.getClaimedChunks().isEmpty()) return;
         Set<String> edges = calcEdges(town.getClaimedChunks());
         List<List<Point>> polygons = tracePolygons(edges);
+
         int cr = 150, cg = 150, cb = 150;
         Object fill = cColor.newInstance(cr, cg, cb, 0.25f);
         Object line = cColor.newInstance(cr, cg, cb, 1.0f);
         String popup = buildTownPopup(town, null);
+
         int i = 0;
-        for (List<Point> poly : polygons)
+        for (List<Point> poly : polygons) {
+            if (poly.size() < 3) continue;
             markers.put("standalone_" + town.getName() + "_" + (i++),
-                    createShapeMarker(town.getName(), createShape(poly), fill, line, 2, popup));
+                    createShapeMarker(town.getName(), createShape(poly), fill, line, 3, popup));
+        }
     }
 
     // ── Иконка города ─────────────────────────────────────────────
@@ -231,10 +212,9 @@ public class BlueMapIntegration {
         double py = town.getSpawnPos().getY() + 2.0;
         double pz = town.getSpawnPos().getZ() + 0.5;
 
-        String base64   = isCapital ? CAPITAL_ICON_BASE64 : TOWN_ICON_BASE64;
-        int    iconSize  = isCapital ? 26 : 14;
+        String base64 = isCapital ? CAPITAL_ICON_BASE64 : TOWN_ICON_BASE64;
+        int iconSize = isCapital ? 26 : 14;
 
-        // z-index:1 — внутри контейнера; глобальный z-index задаётся CSS в index.html
         String html = "<div style=\"transform:translate(-50%,-50%);width:" + iconSize
                 + "px;height:" + iconSize
                 + "px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));cursor:pointer;z-index:1;position:relative;\">";
@@ -275,15 +255,14 @@ public class BlueMapIntegration {
     }
 
     // ══════════════════════════════════════════════════════════════
-    //  ПОПАП  —  информация о городе (клик по территории)
+    //  ПОПАП — информация о городе (клик по территории)
     // ══════════════════════════════════════════════════════════════
     private static String buildTownPopup(Town town, Nation nation) {
 
         String nationName = (nation != null) ? nation.getName() : "Без нации";
-        String townName   = town.getName();
-        String mayorName  = getPlayerName(town.getMayor());
+        String townName = town.getName();
+        String mayorName = getPlayerName(town.getMayor());
 
-        // Собираем имена жителей
         List<String> memberNames = new ArrayList<>();
         for (UUID id : town.getMembers()) {
             memberNames.add(getPlayerName(id));
@@ -292,7 +271,6 @@ public class BlueMapIntegration {
                 ? "—"
                 : String.join(", ", memberNames);
 
-        // ── HTML с inline-стилями (не зависит от внешнего CSS) ────
         StringBuilder sb = new StringBuilder();
         sb.append("<div style=\"")
           .append("font-family:'Segoe UI',Arial,sans-serif;")
@@ -325,7 +303,7 @@ public class BlueMapIntegration {
           .append(escapeHtml(mayorName))
           .append("</span></div>");
 
-        // Строка 4 — Жители (перенос если не вмещаются)
+        // Строка 4 — Жители
         sb.append("<div style=\"word-wrap:break-word;overflow-wrap:break-word;\">")
           .append("<span style=\"color:#b6b8bf;font-weight:bold;\">Жители: </span>")
           .append("<span style=\"color:#ffffff;font-weight:bold;\">")
