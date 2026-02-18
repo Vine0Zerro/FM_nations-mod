@@ -276,7 +276,8 @@ public class BlueMapIntegration {
                     width = 1;
                 }
 
-                // townName - label для тултипа, popup - detail для клика
+                // townName — это label (для тултипа при наведении)
+                // popup — это detail (для окна при клике)
                 markers.put("townborder_" + townName + "_" + (j++),
                     createShapeMarker(townName, createShape(poly), fill, line, width, popup));
             }
@@ -322,7 +323,7 @@ public class BlueMapIntegration {
         String base64 = isCapital ? CAPITAL_ICON_BASE64 : TOWN_ICON_BASE64;
         int iconSize = isCapital ? 26 : 14;
 
-        String html = "<div class=\"bm-marker-poi-icon\" style=\"" +
+        String html = "<div style=\"" +
             "transform:translate(-50%,-50%);" +
             "width:" + iconSize + "px;" +
             "height:" + iconSize + "px;" +
@@ -330,7 +331,7 @@ public class BlueMapIntegration {
             "cursor:pointer;" +
             "z-index:1;" +
             "position:relative;" +
-            "\" title=\"" + escapeHtml(town.getName()) + "\">";
+            "\">";
 
         if (base64 != null) {
             html += "<img src=\"data:image/png;base64," + base64 + "\" " +
@@ -341,9 +342,6 @@ public class BlueMapIntegration {
             int fontSize = isCapital ? 18 : 8;
             html += "<span style=\"font-size:" + fontSize + "px;\">" + symbol + "</span>";
         }
-        
-        // Скрытый элемент с названием для JS скрипта
-        html += "<div class=\"bm-marker-label\" style=\"display:none;\">" + escapeHtml(town.getName()) + "</div>";
         html += "</div>";
 
         Object builder = mHtmlMarkerBuilder.invoke(null);
@@ -422,7 +420,7 @@ public class BlueMapIntegration {
         return mShapeMarkerBuild.invoke(bd);
     }
 
-        private static String buildTownPopup(Town town, Nation nation) {
+    private static String buildTownPopup(Town town, Nation nation) {
         String nationName = nation != null ? nation.getName() : "Без нации";
         String townName = town.getName();
         String mayorName = getPlayerName(town.getMayor());
@@ -430,36 +428,43 @@ public class BlueMapIntegration {
 
         StringBuilder sb = new StringBuilder();
 
-        // Контейнер с жесткой шириной
-        sb.append("<div style=\"font-family:'Segoe UI',sans-serif; width:300px; padding:5px;\">");
+        // Обертка с фиксированной шириной
+        sb.append("<div style=\"width:300px; font-family:'Segoe UI',sans-serif; font-size:13px;\">");
 
-        // Заголовок: Нация и Город
-        sb.append("<div style=\"text-align:center; margin-bottom:10px;\">");
-        sb.append("<div style=\"font-size:14px; font-weight:bold; color:#b6b8bf;\">Нация: <span style=\"color:#ffffff;\">").append(escapeHtml(nationName)).append("</span></div>");
-        sb.append("<div style=\"font-size:16px; font-weight:bold; color:#b6b8bf; margin-top:2px;\">Город: <span style=\"color:#ffffff;\">").append(escapeHtml(townName)).append("</span></div>");
+        // 1. Нация
+        sb.append("<div style=\"margin-bottom:2px;\">");
+        sb.append("<span style=\"color:#b6b8bf; font-weight:bold;\">Нация: </span>");
+        sb.append("<span style=\"color:#ffffff; font-weight:bold;\">").append(escapeHtml(nationName)).append("</span>");
         sb.append("</div>");
 
-        // Линия
-        sb.append("<div style=\"height:1px; background:#555; margin:8px 0;\"></div>");
+        // 2. Город
+        sb.append("<div style=\"margin-bottom:8px;\">");
+        sb.append("<span style=\"color:#b6b8bf; font-weight:bold;\">Город: </span>");
+        sb.append("<span style=\"color:#ffffff; font-weight:bold;\">").append(escapeHtml(townName)).append("</span>");
+        sb.append("</div>");
 
-        // Инфо
-        sb.append("<div style=\"line-height:1.5;\">");
+        // Разделитель
+        sb.append("<div style=\"height:1px; background:#666; margin:6px 0;\"></div>");
+
+        // 3. Мэр
+        sb.append("<div style=\"margin-top:8px;\">");
+        sb.append("<span style=\"color:#b6b8bf; font-weight:bold;\">Мэр: </span>");
+        sb.append("<span style=\"color:#ffd700; font-weight:bold;\">").append(escapeHtml(mayorName)).append("</span>");
+        sb.append("</div>");
+
+        // 4. Жители
+        sb.append("<div style=\"margin-top:4px;\">");
+        sb.append("<span style=\"color:#b6b8bf; font-weight:bold;\">Жители: </span>");
+        sb.append("<span style=\"color:#ffffff; line-height:1.4;\">");
         
-        // Мэр
-        sb.append("<div><span style=\"color:#b6b8bf; font-weight:bold;\">Мэр: </span>");
-        sb.append("<span style=\"color:#ffd700; font-weight:bold;\">").append(escapeHtml(mayorName)).append("</span></div>");
-
-        // Жители
-        sb.append("<div style=\"margin-top:4px;\"><span style=\"color:#b6b8bf; font-weight:bold;\">Жители: </span>");
-        sb.append("<span style=\"color:#ffffff;\">");
         if (memberNames.isEmpty()) {
             sb.append("—");
         } else {
             sb.append(String.join(", ", memberNames));
         }
         sb.append("</span></div>");
-        
-        sb.append("</div></div>");
+
+        sb.append("</div>");
         return sb.toString();
     }
 
