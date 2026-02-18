@@ -170,21 +170,18 @@ public class BlueMapIntegration {
                 tMarkers.clear();
                 iMarkers.clear();
 
-                // 1. Внешняя граница нации — заливка без попапа
                 for (Nation nation : NationsData.getAllNations()) {
                     try { drawNationTerritory(nation, tMarkers); } catch (Exception e) {
                         NationsMod.LOGGER.error("Nation territory error " + nation.getName() + ": " + e.getMessage());
                     }
                 }
 
-                // 2. Каждый город внутри нации — контур с попапом
                 for (Nation nation : NationsData.getAllNations()) {
                     try { drawNationTownBorders(nation, tMarkers); } catch (Exception e) {
                         NationsMod.LOGGER.error("Town border error " + nation.getName() + ": " + e.getMessage());
                     }
                 }
 
-                // 3. Города без нации
                 for (Town town : NationsData.getAllTowns()) {
                     if (town.getNationName() == null) {
                         try { drawStandaloneTown(town, tMarkers); } catch (Exception e) {
@@ -193,7 +190,6 @@ public class BlueMapIntegration {
                     }
                 }
 
-                // 4. Иконки
                 for (Town town : NationsData.getAllTowns()) {
                     try { drawTownIcon(town, iMarkers); } catch (Exception e) {
                         NationsMod.LOGGER.error("Icon error " + town.getName() + ": " + e.getMessage());
@@ -250,7 +246,9 @@ public class BlueMapIntegration {
     }
 
     // ================================================================
-    //  ГРАНИЦЫ ГОРОДОВ ВНУТРИ НАЦИИ — с попапом
+    //  КАЖДЫЙ ГОРОД — отдельный ShapeMarker с label и detail (попап)
+    //  label = название города (для тултипа при наведении)
+    //  detail = HTML попап (при клике)
     // ================================================================
 
     private static void drawNationTownBorders(Nation nation, Map<String, Object> markers) throws Exception {
@@ -259,8 +257,6 @@ public class BlueMapIntegration {
         int hex = nation.getColor().getHex();
         int cr = (hex >> 16) & 0xFF, cg = (hex >> 8) & 0xFF, cb = hex & 0xFF;
         int lr = Math.min(255, cr + 60), lg = Math.min(255, cg + 60), lb = Math.min(255, cb + 60);
-        Object townLine = cColor.newInstance(lr, lg, lb, 0.5f);
-        Object noFill = cColor.newInstance(0, 0, 0, 0.0f);
 
         for (String townName : townNames) {
             Town town = NationsData.getTown(townName);
@@ -268,20 +264,33 @@ public class BlueMapIntegration {
 
             Set<String> townEdges = calcEdges(town.getClaimedChunks());
             List<List<Point>> townPolygons = tracePolygons(townEdges);
-            String townPopup = buildTownPopup(town, nation);
+
+            // detail = HTML попап при клике на территорию
+            String popup = buildTownPopup(town, nation);
 
             int j = 0;
             for (List<Point> poly : townPolygons) {
                 if (poly.size() < 3) continue;
+
+                Object fill, line;
+                int width;
+
                 if (townNames.size() == 1) {
-                    Object fill = cColor.newInstance(cr, cg, cb, 0.22f);
-                    Object line2 = cColor.newInstance(cr, cg, cb, 1.0f);
-                    markers.put("townborder_" + townName + "_" + (j++),
-                        createShapeMarker(townName, createShape(poly), fill, line2, 3, townPopup));
+                    // Единственный город — заливка + граница
+                    fill = cColor.newInstance(cr, cg, cb, 0.22f);
+                    line = cColor.newInstance(cr, cg, cb, 1.0f);
+                    width = 3;
                 } else {
-                    markers.put("townborder_" + townName + "_" + (j++),
-                        createShapeMarker(townName, createShape(poly), noFill, townLine, 1, townPopup));
+                    // Несколько городов — без заливки, тонкая граница
+                    fill = cColor.newInstance(0, 0, 0, 0.0f);
+                    line = cColor.newInstance(lr, lg, lb, 0.5f);
+                    width = 1;
                 }
+
+                // label = название города (BlueMap показывает при наведении)
+                // detail = HTML попап (BlueMap показывает при клике)
+                markers.put("townborder_" + townName + "_" + (j++),
+                    createShapeMarker(townName, createShape(poly), fill, line, width, popup));
             }
         }
     }
@@ -314,7 +323,7 @@ public class BlueMapIntegration {
     }
 
     // ================================================================
-    //  ИКОНКИ — только картинка, z-index низкий чтобы панель перекрывала
+    //  ИКОНКИ
     // ================================================================
 
     private static void drawTownIcon(Town town, Map<String, Object> markers) throws Exception {
@@ -333,7 +342,6 @@ public class BlueMapIntegration {
         String base64 = isCapital ? CAPITAL_ICON_BASE64 : TOWN_ICON_BASE64;
         int iconSize = isCapital ? 26 : 14;
 
-        // z-index:1 чтобы панель попапа и игрок были выше
         String html = "<div style=\"" +
             "transform:translate(-50%,-50%);" +
             "width:" + iconSize + "px;" +
@@ -349,7 +357,7 @@ public class BlueMapIntegration {
                 "width=\"" + iconSize + "\" height=\"" + iconSize + "\" " +
                 "style=\"display:block;\" />";
         } else {
-            String symbol = isCapital ? "👑" : "•";
+            String symbol = isCapital ? "★" : "•";
             int fontSize = isCapital ? 18 : 8;
             html += "<span style=\"font-size:" + fontSize + "px;\">" + symbol + "</span>";
         }
@@ -429,19 +437,20 @@ public class BlueMapIntegration {
         mShapeMarkerFillColor.invoke(bd, fill);
         mShapeMarkerLineColor.invoke(bd, line);
         mShapeMarkerLineWidth.invoke(bd, width);
-        mShapeMarkerDetail.invoke(bd, detail);
+        if (detail != null && !detail.isEmpty()) {
+            mShapeMarkerDetail.invoke(bd, detail);
+        }
         return mShapeMarkerBuild.invoke(bd);
     }
 
     // ================================================================
-    //  ПОПАП ГОРОДА
+    //  ПОПАП ГОРОДА (HTML для detail)
     //
-    //  Формат:
-    //    Нация: Название
-    //    Город: Название
-    //    ───────────────
-    //    Мэр: Ник (жёлтый)
-    //    Жители: список (белый)
+    //  Нация: Название
+    //  Город: Название
+    //  ───────────────
+    //  Мэр: Ник (жёлтый)
+    //  Жители: список (белый)
     // ================================================================
 
     private static String buildTownPopup(Town town, Nation nation) {
@@ -452,32 +461,33 @@ public class BlueMapIntegration {
 
         StringBuilder sb = new StringBuilder();
 
-        sb.append("<div style=\"font-family:'Segoe UI',Arial,sans-serif;\">");
+        // Оборачиваем в div с классом для CSS в index.html
+        sb.append("<div class=\"nations-popup\" style=\"font-family:'Segoe UI',Arial,sans-serif;padding:10px;\">");
 
         // Нация: Название
-        sb.append("<center style=\"font-size:120%;font-weight:bold;color:#e6e8f0\">");
+        sb.append("<div style=\"text-align:center;font-size:120%;font-weight:bold;color:#e6e8f0;\">");
         sb.append("<span style=\"color:#b6b8bf\">Нация: </span>");
-        sb.append("<span style=\"color:#e6e8f0\">").append(escapeHtml(nationName)).append("</span>");
+        sb.append(escapeHtml(nationName));
         sb.append("<br>");
 
         // Город: Название
         sb.append("<span style=\"color:#b6b8bf\">Город: </span>");
-        sb.append("<span style=\"color:#e6e8f0\">").append(escapeHtml(townName)).append("</span>");
-        sb.append("</center>");
+        sb.append(escapeHtml(townName));
+        sb.append("</div>");
 
         // Разделитель
         sb.append("<hr style=\"border:0;border-top:1px solid #555;margin:8px 0\">");
 
-        // Мэр: Ник
-        sb.append("<span style=\"font-weight:bold;color:#b6b8bf\">Мэр: </span>");
-        sb.append("<span style=\"font-weight:bold;color:#f5c542\">")
-          .append(escapeHtml(mayorName))
-          .append("</span><br>");
+        // Мэр
+        sb.append("<div style=\"font-weight:bold;\">");
+        sb.append("<span style=\"color:#b6b8bf\">Мэр: </span>");
+        sb.append("<span style=\"color:#f5c542\">").append(escapeHtml(mayorName)).append("</span>");
+        sb.append("</div>");
 
-        // Жители: список
-        sb.append("<span style=\"font-weight:bold;color:#b6b8bf\">Жители: </span>");
-        sb.append("<span style=\"font-weight:bold;color:#e6e8f0\">");
-
+        // Жители
+        sb.append("<div style=\"font-weight:bold;margin-top:4px;\">");
+        sb.append("<span style=\"color:#b6b8bf\">Жители: </span>");
+        sb.append("<span style=\"color:#e6e8f0\">");
         if (memberNames.isEmpty()) {
             sb.append("—");
         } else {
@@ -487,14 +497,11 @@ public class BlueMapIntegration {
             }
         }
         sb.append("</span>");
+        sb.append("</div>");
 
         sb.append("</div>");
         return sb.toString();
     }
-
-    // ================================================================
-    //  ПОЛУЧЕНИЕ НИКОВ ИГРОКОВ
-    // ================================================================
 
     private static String getPlayerName(UUID playerId) {
         if (playerId == null) return "—";
