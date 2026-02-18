@@ -195,22 +195,25 @@ public class BlueMapIntegration {
             if (nation != null) isCapital = nation.isCapital(town.getName());
         }
 
-        // Только столицы получают иконку
-        if (!isCapital) return;
-
         double px = town.getSpawnPos().getX() + 0.5;
         double py = town.getSpawnPos().getY() + 2.0;
         double pz = town.getSpawnPos().getZ() + 0.5;
 
-        int iconSize = 26;
-
-        String html = "<div style=\"transform:translate(-50%,-50%);width:" + iconSize
-                + "px;height:" + iconSize
-                + "px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));cursor:pointer;z-index:1;position:relative;\">";
-        html += "<img src=\"data:image/png;base64," + CAPITAL_ICON_BASE64
-                + "\" width=\"" + iconSize + "\" height=\"" + iconSize
-                + "\" style=\"display:block;\" />";
-        html += "</div>";
+        String html;
+        if (isCapital) {
+            // Столица — видимая иконка 26px
+            int iconSize = 26;
+            html = "<div style=\"transform:translate(-50%,-50%);width:" + iconSize
+                    + "px;height:" + iconSize
+                    + "px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));cursor:pointer;z-index:1;position:relative;\">";
+            html += "<img src=\"data:image/png;base64," + CAPITAL_ICON_BASE64
+                    + "\" width=\"" + iconSize + "\" height=\"" + iconSize
+                    + "\" style=\"display:block;\" />";
+            html += "</div>";
+        } else {
+            // Обычный город — невидимый маркер (для работы JS тултипов)
+            html = "<div style=\"width:0;height:0;pointer-events:none;\"></div>";
+        }
 
         Object builder = mHtmlMarkerBuilder.invoke(null);
         mHtmlMarkerLabel.invoke(builder, town.getName());
