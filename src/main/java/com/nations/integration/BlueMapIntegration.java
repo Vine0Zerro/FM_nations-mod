@@ -121,12 +121,10 @@ public class BlueMapIntegration {
                 tMarkers.clear();
                 iMarkers.clear();
 
-                // Рисуем каждый город отдельно (с заливкой и попапом)
                 for (Nation nation : NationsData.getAllNations()) {
                     try { drawNationTowns(nation, tMarkers); } catch (Exception e) { e.printStackTrace(); }
                 }
 
-                // Города без нации
                 for (Town town : NationsData.getAllTowns()) {
                     if (town.getNationName() == null)
                         try { drawStandaloneTown(town, tMarkers); } catch (Exception e) { e.printStackTrace(); }
@@ -147,17 +145,11 @@ public class BlueMapIntegration {
         return set;
     }
 
-    // ══════════════════════════════════════════════════════════════
-    //  Каждый город нации — отдельный полигон с ЗАЛИВКОЙ и ПОПАПОМ
-    //  Клик работает по ВСЕЙ территории, не только по границе
-    // ══════════════════════════════════════════════════════════════
     private static void drawNationTowns(Nation nation, Map<String, Object> markers) throws Exception {
         int hex = nation.getColor().getHex();
         int cr = (hex >> 16) & 0xFF, cg = (hex >> 8) & 0xFF, cb = hex & 0xFF;
 
-        // Заливка — цвет нации, полупрозрачная
         Object fill = cColor.newInstance(cr, cg, cb, 0.22f);
-        // Граница — цвет нации, непрозрачная, толщина 3
         Object line = cColor.newInstance(cr, cg, cb, 1.0f);
 
         for (String townName : nation.getTowns()) {
@@ -171,15 +163,12 @@ public class BlueMapIntegration {
             int j = 0;
             for (List<Point> poly : polygons) {
                 if (poly.size() < 3) continue;
-                // Каждый город — полигон с ЗАЛИВКОЙ (кликабельная вся площадь)
-                // Граница 3px — одинаковая толщина для всех
                 markers.put("town_" + townName + "_" + (j++),
                         createShapeMarker(townName, createShape(poly), fill, line, 3, popup));
             }
         }
     }
 
-    // ── Город без нации ───────────────────────────────────────────
     private static void drawStandaloneTown(Town town, Map<String, Object> markers) throws Exception {
         if (town.getClaimedChunks().isEmpty()) return;
         Set<String> edges = calcEdges(town.getClaimedChunks());
@@ -198,7 +187,6 @@ public class BlueMapIntegration {
         }
     }
 
-    // ── Иконка города ─────────────────────────────────────────────
     private static void drawTownIcon(Town town, Map<String, Object> markers) throws Exception {
         if (town.getSpawnPos() == null) return;
         boolean isCapital = false;
@@ -207,24 +195,21 @@ public class BlueMapIntegration {
             if (nation != null) isCapital = nation.isCapital(town.getName());
         }
 
+        // Только столицы получают иконку
+        if (!isCapital) return;
+
         double px = town.getSpawnPos().getX() + 0.5;
         double py = town.getSpawnPos().getY() + 2.0;
         double pz = town.getSpawnPos().getZ() + 0.5;
 
-        String base64 = isCapital ? CAPITAL_ICON_BASE64 : TOWN_ICON_BASE64;
-        int iconSize = isCapital ? 26 : 14;
+        int iconSize = 26;
 
         String html = "<div style=\"transform:translate(-50%,-50%);width:" + iconSize
                 + "px;height:" + iconSize
                 + "px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));cursor:pointer;z-index:1;position:relative;\">";
-        if (base64 != null) {
-            html += "<img src=\"data:image/png;base64," + base64
-                    + "\" width=\"" + iconSize + "\" height=\"" + iconSize
-                    + "\" style=\"display:block;\" />";
-        } else {
-            html += "<span style=\"font-size:" + (isCapital ? 18 : 8) + "px;\">"
-                    + (isCapital ? "★" : "•") + "</span>";
-        }
+        html += "<img src=\"data:image/png;base64," + CAPITAL_ICON_BASE64
+                + "\" width=\"" + iconSize + "\" height=\"" + iconSize
+                + "\" style=\"display:block;\" />";
         html += "</div>";
 
         Object builder = mHtmlMarkerBuilder.invoke(null);
@@ -237,7 +222,6 @@ public class BlueMapIntegration {
         markers.put("icon_" + town.getName(), mHtmlMarkerBuild.invoke(builder));
     }
 
-    // ── ShapeMarker builder ───────────────────────────────────────
     private static Object createShapeMarker(String label, Object shape,
                                             Object fill, Object line,
                                             int width, String detail) throws Exception {
@@ -253,12 +237,8 @@ public class BlueMapIntegration {
         return mShapeMarkerBuild.invoke(bd);
     }
 
-    // ══════════════════════════════════════════════════════════════
-    //  ПОПАП — информация о городе (клик по территории)
-    // ══════════════════════════════════════════════════════════════
     private static String buildTownPopup(Town town, Nation nation) {
-
-        String nationName = (nation != null) ? nation.getName() : "Без нации";
+        String nationName = (nation != null) ? nation.getName() : "\u0411\u0435\u0437 \u043D\u0430\u0446\u0438\u0438";
         String townName = town.getName();
         String mayorName = getPlayerName(town.getMayor());
 
@@ -267,7 +247,7 @@ public class BlueMapIntegration {
             memberNames.add(getPlayerName(id));
         }
         String residentsStr = memberNames.isEmpty()
-                ? "—"
+                ? "\u2014"
                 : String.join(", ", memberNames);
 
         StringBuilder sb = new StringBuilder();
@@ -278,33 +258,28 @@ public class BlueMapIntegration {
           .append("min-width:200px;")
           .append("\">");
 
-        // Строка 1 — Нация
         sb.append("<div style=\"margin-bottom:1px;\">")
-          .append("<span style=\"color:#b6b8bf;font-weight:bold;\">Нация: </span>")
+          .append("<span style=\"color:#b6b8bf;font-weight:bold;\">\u041D\u0430\u0446\u0438\u044F: </span>")
           .append("<span style=\"color:#ffffff;font-weight:bold;\">")
           .append(escapeHtml(nationName))
           .append("</span></div>");
 
-        // Строка 2 — Город
         sb.append("<div>")
-          .append("<span style=\"color:#b6b8bf;font-weight:bold;\">Город: </span>")
+          .append("<span style=\"color:#b6b8bf;font-weight:bold;\">\u0413\u043E\u0440\u043E\u0434: </span>")
           .append("<span style=\"color:#ffffff;font-weight:bold;\">")
           .append(escapeHtml(townName))
           .append("</span></div>");
 
-        // Разделитель
         sb.append("<hr style=\"border:none;border-top:1px solid rgba(255,255,255,0.15);margin:8px 0;\">");
 
-        // Строка 3 — Мэр (жёлтый ник)
         sb.append("<div style=\"margin-bottom:2px;\">")
-          .append("<span style=\"color:#b6b8bf;font-weight:bold;\">Мэр: </span>")
+          .append("<span style=\"color:#b6b8bf;font-weight:bold;\">\u041C\u044D\u0440: </span>")
           .append("<span style=\"color:#ffd700;font-weight:bold;\">")
           .append(escapeHtml(mayorName))
           .append("</span></div>");
 
-        // Строка 4 — Жители
         sb.append("<div style=\"word-wrap:break-word;overflow-wrap:break-word;\">")
-          .append("<span style=\"color:#b6b8bf;font-weight:bold;\">Жители: </span>")
+          .append("<span style=\"color:#b6b8bf;font-weight:bold;\">\u0416\u0438\u0442\u0435\u043B\u0438: </span>")
           .append("<span style=\"color:#ffffff;font-weight:bold;\">")
           .append(escapeHtml(residentsStr))
           .append("</span></div>");
@@ -313,7 +288,6 @@ public class BlueMapIntegration {
         return sb.toString();
     }
 
-    // ── Geometry helpers ──────────────────────────────────────────
     private static Set<String> calcEdges(Set<ChunkPos> chunks) {
         Set<String> e = new HashSet<>();
         for (ChunkPos c : chunks) {
@@ -363,7 +337,7 @@ public class BlueMapIntegration {
     }
 
     private static String getPlayerName(UUID id) {
-        if (id == null) return "—";
+        if (id == null) return "\u2014";
         if (NationsData.getServer() != null) {
             var p = NationsData.getServer().getPlayerList().getPlayer(id);
             if (p != null) return p.getName().getString();
